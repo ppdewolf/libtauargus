@@ -36,12 +36,13 @@ public:
 	long NumberofMaxScoreHolding; //Saves the number of MaxScore to be stored per cell--Holding Level
 	bool Prepared;         // if table is already prepared
 	long nDim;              // number of variables (= dimensions) in table
-   int  SizeDim[MAXDIM];   // = nCode of corresponding variable
+        int  SizeDim[MAXDIM];   // = nCode of corresponding variable
 
 	int ExplVarnr[MAXDIM];  // index of each explanatory variable
 	int ResponseVarnr;      // index of respons variable
 	int ShadowVarnr;        // index of shadow variable
 	int CostVarnr;          // index of cost variable; or CVT_FREQ etc, these values are always < 0
+        int CellKeyVarnr;       // index of variable to compute cellkey
 	int PeepVarnr;
 
 	// Transformation the Cost function.
@@ -178,10 +179,11 @@ public:
 	//bool SetPQRule(long PriorPosteriorP, long PriorPosteriorQ, long PriorPosteriorN);
 	bool SetPQRule(long *PriorPosteriorP,long *PriorPosteriorQ, long *PriorPosteriorN);
 	bool SetSafeMinRecAndHold(long SafeMinRec, long SafeMinholdings);
-	bool SetVariables(int inDim, long* ExplVar, long RespVar, long ShadVar, long CostVar, long PeepVar);
+	bool SetVariables(int inDim, long* ExplVar, long RespVar, long ShadVar, long CostVar, long CellKeyVar, long PeepVar);
 	bool SetExplVariables(int nDim, long* ExplVar);
 	bool SetProtectionLevelCell(CDataCell &datacell);
 	bool SetProtectionLevelCellFrequency(CDataCell &datacell, long Base, long K);
+        bool ComputeCellKeyCell(CDataCell &datacell);
 	virtual ~CTable();
 };
 

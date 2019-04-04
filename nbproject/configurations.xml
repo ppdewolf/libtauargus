@@ -13,11 +13,12 @@
       <itemPath>Hitas.h</itemPath>
       <itemPath>IProgressListener.h</itemPath>
       <itemPath>JJFormat.h</itemPath>
+      <itemPath>PTable.h</itemPath>
       <itemPath>Properties.h</itemPath>
       <itemPath>SubCodeList.h</itemPath>
       <itemPath>Table.h</itemPath>
       <itemPath>TauArgus.h</itemPath>
-      <itemPath>TauArgusJava_wrap.h</itemPath>
+      <itemPath>C:/Users/pwof/Documents/Argus/libtauargus/TauArgusJava_wrap.h</itemPath>
       <itemPath>Variable.h</itemPath>
       <itemPath>defines.h</itemPath>
     </logicalFolder>
@@ -25,6 +26,7 @@
                    displayName="Resource Files"
                    projectFiles="true">
       <itemPath>TauArgusJava.swg</itemPath>
+      <itemPath>Versioninfo.rc</itemPath>
     </logicalFolder>
     <logicalFolder name="SourceFiles"
                    displayName="Source Files"
@@ -36,11 +38,12 @@
       <itemPath>Ghmiter.cpp</itemPath>
       <itemPath>Hitas.cpp</itemPath>
       <itemPath>JJFormat.cpp</itemPath>
+      <itemPath>PTable.cpp</itemPath>
       <itemPath>Properties.cpp</itemPath>
       <itemPath>SubCodeList.cpp</itemPath>
       <itemPath>Table.cpp</itemPath>
       <itemPath>TauArgus.cpp</itemPath>
-      <itemPath>TauArgusJava_wrap.cpp</itemPath>
+      <itemPath>C:/Users/pwof/Documents/Argus/libtauargus/TauArgusJava_wrap.cpp</itemPath>
       <itemPath>Variable.cpp</itemPath>
     </logicalFolder>
     <logicalFolder name="TestFiles"
@@ -62,7 +65,7 @@
   <confs>
     <conf name="Debug" type="2">
       <toolsSet>
-        <compilerSet>default</compilerSet>
+        <compilerSet>MinGW|MinGW</compilerSet>
         <dependencyChecking>true</dependencyChecking>
         <rebuildPropChanged>false</rebuildPropChanged>
       </toolsSet>
@@ -87,6 +90,16 @@
       </item>
       <item path="AMPL.h" ex="false" tool="3" flavor2="0">
       </item>
+      <item path="C:/Users/pwof/Documents/Argus/libtauargus/TauArgusJava_wrap.cpp"
+            ex="false"
+            tool="1"
+            flavor2="0">
+      </item>
+      <item path="C:/Users/pwof/Documents/Argus/libtauargus/TauArgusJava_wrap.h"
+            ex="false"
+            tool="3"
+            flavor2="0">
+      </item>
       <item path="Code.cpp" ex="false" tool="1" flavor2="0">
       </item>
       <item path="Code.h" ex="false" tool="3" flavor2="0">
@@ -114,6 +127,10 @@
       <item path="JJFormat.cpp" ex="false" tool="1" flavor2="0">
       </item>
       <item path="JJFormat.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="PTable.cpp" ex="false" tool="1" flavor2="0">
+      </item>
+      <item path="PTable.h" ex="false" tool="3" flavor2="0">
       </item>
       <item path="Properties.cpp" ex="false" tool="1" flavor2="0">
       </item>
@@ -137,13 +154,11 @@
           <customToolOutputs>TauArgusJava_wrap.cpp TauArgusJava_wrap.h</customToolOutputs>
         </customTool>
       </item>
-      <item path="TauArgusJava_wrap.cpp" ex="false" tool="1" flavor2="0">
-      </item>
-      <item path="TauArgusJava_wrap.h" ex="false" tool="3" flavor2="0">
-      </item>
       <item path="Variable.cpp" ex="false" tool="1" flavor2="0">
       </item>
       <item path="Variable.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Versioninfo.rc" ex="false" tool="3" flavor2="0">
       </item>
       <item path="defines.h" ex="false" tool="3" flavor2="0">
       </item>
@@ -160,13 +175,6 @@
         </cTool>
         <ccTool>
           <developmentMode>5</developmentMode>
-          <incDir>
-            <pElem>C:/Program Files (x86)/Java/jdk1.7.0_79/include</pElem>
-            <pElem>C:/Program Files (x86)/Java/jdk1.7.0_79/include/win32</pElem>
-          </incDir>
-          <preprocessorList>
-            <Elem>NDEBUG</Elem>
-          </preprocessorList>
           <warningLevel>2</warningLevel>
         </ccTool>
         <fortranCompilerTool>
@@ -183,6 +191,16 @@
       <item path="AMPL.cpp" ex="false" tool="1" flavor2="0">
       </item>
       <item path="AMPL.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="C:/Users/pwof/Documents/Argus/libtauargus/TauArgusJava_wrap.cpp"
+            ex="false"
+            tool="1"
+            flavor2="0">
+      </item>
+      <item path="C:/Users/pwof/Documents/Argus/libtauargus/TauArgusJava_wrap.h"
+            ex="false"
+            tool="3"
+            flavor2="0">
       </item>
       <item path="Code.cpp" ex="false" tool="1" flavor2="0">
       </item>
@@ -212,6 +230,10 @@
       </item>
       <item path="JJFormat.h" ex="false" tool="3" flavor2="0">
       </item>
+      <item path="PTable.cpp" ex="false" tool="1" flavor2="0">
+      </item>
+      <item path="PTable.h" ex="false" tool="3" flavor2="0">
+      </item>
       <item path="Properties.cpp" ex="false" tool="1" flavor2="0">
       </item>
       <item path="Properties.h" ex="false" tool="3" flavor2="0">
@@ -230,17 +252,15 @@
       </item>
       <item path="TauArgusJava.swg" ex="false" tool="3" flavor2="0">
         <customTool>
-          <customToolCommandline>C:\swigwin-2.0.11\swig.exe -c++ -java -package tauargus.extern.dataengine -outdir ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM} -o TauArgusJava_wrap.cpp TauArgusJava.swg</customToolCommandline>
+          <customToolCommandline>C:\swigwin-3.0.10\swig.exe -c++ -java -package tauargus.extern.dataengine -outdir ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM} -o TauArgusJava_wrap.cpp TauArgusJava.swg</customToolCommandline>
           <customToolOutputs>TauArgusJava_wrap.cpp TauArgusJava_wrap.h</customToolOutputs>
         </customTool>
-      </item>
-      <item path="TauArgusJava_wrap.cpp" ex="false" tool="1" flavor2="0">
-      </item>
-      <item path="TauArgusJava_wrap.h" ex="false" tool="3" flavor2="0">
       </item>
       <item path="Variable.cpp" ex="false" tool="1" flavor2="0">
       </item>
       <item path="Variable.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Versioninfo.rc" ex="false" tool="3" flavor2="0">
       </item>
       <item path="defines.h" ex="false" tool="3" flavor2="0">
       </item>

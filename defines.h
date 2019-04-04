@@ -27,12 +27,25 @@
 #define FIREPROGRESS 1000
 #define MAXDIM 10
 #define MAXDIGITGROUP 10
-#define MAXLEVEL 8
+#define MAXLEVEL 10 //8
 #define EPSILON 0.0001 //0.0000001
 
+//inline bool DBL_EQ(double x, double v)
+//{ 
+//    return fabs(x - v) <= 4*std::numeric_limits<double>::epsilon();
+//}
+
 inline bool DBL_EQ(double x, double v)
-{ 
-    return fabs(x - v) <= 4*std::numeric_limits<double>::epsilon();
+// Using way of comparing two floats as suggested on http://en.cppreference.com/w/cpp/types/numeric_limits/epsilon
+// std::fabs(x-v) < std::numeric_limits<double>::epsilon() * std::fabs(x+v) * ulp
+//                  || std::fabs(x-v) < std::numeric_limits<double>::min()
+// Using ULP = 2 as is usually appropriate for the values we are facing
+// Using std::numeric_limits<double>::epsilon() = 1E-14 (should be enough, machine precision 64 bit in 32 bit application could
+// give strange results)
+{
+    int ulp = 2;
+    double eps = 1E-14;
+    return ((std::fabs(x-v) < eps * std::fabs(x+v) * ulp) || (std::fabs(x-v) < eps));
 }
 
 enum CellHoldingSort	{
