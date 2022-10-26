@@ -1,0 +1,17 @@
+name: Build TauArgusJava.dll
+
+on:
+  push:
+    branches: [ "Keep_status" ]
+
+jobs:
+  setupMinGW:
+    runs-on: windows-latest
+    
+    steps:
+      - name: SetUp MinGW
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x86
+  
+ 

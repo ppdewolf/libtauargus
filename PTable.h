@@ -7,26 +7,30 @@
 /* 
  * File:   PTable.h
  * Author: pwof
- *
- * Created on May 31, 2018, 3:44 PM
  */
 
 #ifndef PTABLE_H
 #define PTABLE_H
 
-typedef std::map<int,double> PTableRow;
+typedef struct{
+    int j;
+    double p_ub;
+} P_ENTRY;
+
+typedef std::vector<P_ENTRY> PTableRow;
 
 class PTable {
 public:
     PTable();
     PTable(const PTable& orig);
     virtual ~PTable();
-    bool ReadFromFile(const char* FileName);
+    bool ReadFromFreqFile(std::string FileName);
     int GetmaxNi() {return maxNi;}
     int GetminDiff() {return minDiff;}
     int GetmaxDiff() {return maxDiff;}
     std::vector<PTableRow> GetData() {return Data;}
     void WriteToFile();
+    void Write();
     
 private:
     int maxNi;

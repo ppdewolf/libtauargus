@@ -32,11 +32,18 @@ public:
 
 // Attributes
 public:
-	long NumberofMaxScoreCell; //Saves the number of MaxScore to be stored per cell--Cell Level
-	long NumberofMaxScoreHolding; //Saves the number of MaxScore to be stored per cell--Holding Level
-	bool Prepared;         // if table is already prepared
-	long nDim;              // number of variables (= dimensions) in table
-        int  SizeDim[MAXDIM];   // = nCode of corresponding variable
+	bool Prepared;          // whether table is already prepared
+
+        // About the Table
+	bool IsFrequencyTable;
+	bool ApplyHolding;
+	bool ApplyWeight;
+	bool ApplyWeightOnSafetyRule;
+	bool ApplyPeeper;
+	bool ApplyZeroRule;
+	bool EmptyCellsAsNSEmpty;
+	int HasRecode;
+	bool SetMissingAsSafe;
 
 	int ExplVarnr[MAXDIM];  // index of each explanatory variable
 	int ResponseVarnr;      // index of respons variable
@@ -45,12 +52,25 @@ public:
         int CellKeyVarnr;       // index of variable to compute cellkey
 	int PeepVarnr;
 
+	long nDim;              // number of variables (= dimensions) in table
+        int  SizeDim[MAXDIM];   // = nCode of corresponding variable
+
+//	CDataCell *Cell;          // counting space
+	std::vector<CDataCell*> CellPtr;
+	long nCell;               // number of cells
+	//int nMaxCellValues;
+        
+	long NumberofMaxScoreCell; //Saves the number of MaxScore to be stored per cell--Cell Level
+	long NumberofMaxScoreHolding; //Saves the number of MaxScore to be stored per cell--Holding Level
+        
+        long CKMTopK;           // defines number of largest values percell needed for CKMType = T 
+        std::string CKMType;    // defines multiplier to be used in CKM for magnitude tables
+        bool KeepMinScore;      // if true, save smallest value per cell
+        
 	// Transformation the Cost function.
 	double Lambda;
 	double MaxScaledCost;
 	double MinLPL;          // Minimum protection level avoiding problems when writing intermediate files  
-
-	bool SetMissingAsSafe;
 
 	// Add
 //	int SafetyRule;         // DOMINANCE or PQRULE or None
@@ -110,28 +130,11 @@ public:
 	long SingletonSafetyRangePerc;
 	double ZeroSafetyRange;
 
-//	CDataCell *Cell;          // counting space
-	std::vector<CDataCell*> CellPtr;
-	long nCell;               // number of cells
-	//int nMaxCellValues;
-
-
-// About the Table
-	bool IsFrequencyTable;
-	bool ApplyHolding;
-	bool ApplyWeight;
-	bool ApplyWeightOnSafetyRule;
-	bool ApplyPeeper;
-	bool ApplyZeroRule;
-	bool EmptyCellsAsNSEmpty;
-	int HasRecode;
-
-
 	// Operations
 
 	// have to make the operator =
 	// since it does not work with CPtrArray
-	void operator = (CTable & table2);
+	void operator = (CTable &table2);
 
 public:
 
@@ -183,7 +186,7 @@ public:
 	bool SetExplVariables(int nDim, long* ExplVar);
 	bool SetProtectionLevelCell(CDataCell &datacell);
 	bool SetProtectionLevelCellFrequency(CDataCell &datacell, long Base, long K);
-        bool ComputeCellKeyCell(CDataCell &datacell);
+        //bool ComputeCellKeyCell(CDataCell &datacell);
 	virtual ~CTable();
 };
 

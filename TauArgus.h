@@ -18,6 +18,7 @@
 #ifndef TauArgus_h
 #define TauArgus_h
 
+#include <map>
 #include <clocale>
 #include <vector>
 #include <string>
@@ -31,7 +32,9 @@
 #include "JJFormat.h"
 #include "AMPL.h"
 #include "IProgressListener.h"
+#include "PTableCont.h"
 
+//class __declspec(dllexport) TauArgus
 class TauArgus
 {
 private:
@@ -183,13 +186,13 @@ public:
 	bool SetSingleNonStructuralAsEmpty(/*[in]*/ long TableIndex,/*[in,out]*/  long *DimIndex);
 	bool SetSingleEmptyAsNonStructural(/*[in]*/ long TableIndex, /*[in,out]*/ long *DimIndex);
 	bool SetAllEmptyNonStructural(/*[in]*/ long TableIndex);
-	bool SetSecondaryFromHierarchicalAMPL(/*[in]*/  const char* FileName, /*[in]*/ long TableIndex,  /*[in,out]*/ long *ErrorCode);
-	bool WriteHierarchicalTableInAMPLFormat(/*[in]*/ const char* AMPLFilename, const char* TempDir, /*[in]*/  long Tableindex, /*[in]*/ double MaxScale, long *ErrorCode);
+	bool SetSecondaryFromHierarchicalAMPL(/*[in]*/  const char* FileName, /*[in]*/ long TableIndex,  /*[in,out]*/ long* ErrorCode);
+	bool WriteHierarchicalTableInAMPLFormat(/*[in]*/ const char* AMPLFilename, const char* TempDir, /*[in]*/  long Tableindex, /*[in]*/ double MaxScale, long* ErrorCode);
 	bool SetRoundedResponse(/*[in]*/  const char* RoundedFile,  /*[in]*/ long TableIndex);
 	double MaximumProtectionLevel(/*[in]*/ long TableIndex);
 	bool SetProtectionLevelsForFrequencyTable(long TableIndex,/*[in]*/ long Base, /*[in]*/ long K);
-	bool SetTableCellCost(/*[in]*/ long TableIndex, /*[in,out]*/ long * DimIndex, /*[in]*/ double Cost);
-	bool GetCellStatusStatistics(/*[in]*/ long TableIndex, /*[in,out]*/ long * StatusFreq, /*[in,out]*/ long * StatusCellFreq, /*[in,out] */ long * StatusHoldingFreq, /*[in,out]*/ double *StatusCellResponse, /*[in,out]*/ double * StatusCellCost);
+	bool SetTableCellCost(/*[in]*/ long TableIndex, /*[in,out]*/ long* DimIndex, /*[in]*/ double Cost);
+	bool GetCellStatusStatistics(/*[in]*/ long TableIndex, /*[in,out]*/ long* StatusFreq, /*[in,out]*/ long* StatusCellFreq, /*[in,out] */ long* StatusHoldingFreq, /*[in,out]*/ double *StatusCellResponse, /*[in,out]*/ double* StatusCellCost);
 	bool WriteTableInAMPLFormat(/*[in]*/ const char* AMPLFileName, /*[in]*/ long TableIndex);
 	void SetInFileInfo(/*[in]*/ bool IsFixedFormat, /*[in]*/ const char* Seperator);
 	bool ComputeCodesToIndices(/*[in]*/ long TableIndex, /*[in,out]*/ char* sCode[], /*[in,out]*/ long *DimIndex);
@@ -197,32 +200,23 @@ public:
         bool SetCTAValues(/*[in]*/ long TabIndex, /*[in]*/ long CelNr, /*[in]*/double OrgVal, /*[in]*/double CTAVal,/*[in,out]*/  long *Sec);
 	bool SetRealizedLowerAndUpper(/*[in]*/ long TabNr,/*[in]*/ long CelNr, /*[in]*/ double RealizedUpper, /*[in]*/ double RealizedLower);
 	bool UndoSecondarySuppress(/*[in]*/ long TableIndex, long SortSuppress);
-	bool SetTableSafetyInfo(long TabIndex,
-											bool HasMaxScore,
-											bool DominanceRule,
-											long * DominanceNumber, long * DominancePerc,
-											bool PQRule,
-											long * PriorPosteriorP, long * PriorPosteriorQ, long * PriorPosteriorN,
-											bool HasFreq,
-											long CellFreqSafetyPerc, long SafeMinRec,
-											bool HasStatus, long ManualSafetyPerc,
-											bool ApplyZeroRule, double ZeroSafetyRange,
-											bool EmptyCellAsNonStructural, long NSEmptySafetyRange,
-											long *ErrorCode);
+	bool SetTableSafetyInfo(long TabIndex, bool HasMaxScore, bool DominanceRule, long* DominanceNumber, long* DominancePerc, bool PQRule,
+				long* PriorPosteriorP, long* PriorPosteriorQ, long* PriorPosteriorN,	bool HasFreq, long CellFreqSafetyPerc, 
+                                long SafeMinRec, bool HasStatus, long ManualSafetyPerc,	bool ApplyZeroRule, double ZeroSafetyRange, 
+                                bool EmptyCellAsNonStructural, long NSEmptySafetyRange,	long *ErrorCode);
 	bool SetVariableForTable(/*[in]*/ long Index, /*[in]*/long nMissing,  const char* Missing1, /*[in]*/ const char* Missing2, /*[in]*/ const char* TotalCode,
-		/*[in]*/ long nDec, bool IsPeeper, const char* PeeperCode, /*[in]*/ bool IsHierarchical, /*[in]*/ bool IsNumeriek, /*[in]*/ long nPos);
-	bool CompletedTable(/*[in]*/ long Index, /*[in,out]*/ long * ErrorCode, /*[in]*/ const char* FileName, /*[in]*/ bool CalculateTotals,/*[in]*/ bool SetCalculatedTotalsAsSafe,/*[in]*/ bool ForCoverTable);
-	bool SetInTable(/*[in]*/ long Index, /*[in]*/ char* sCode[],
-									/*[in]*/ double Shadow, /*[in]*/ double Cost,
-									/*[in]*/ double Resp, /*[in]*/ long Freq, /*[in]*/ double * MaxScoreCell,
-									double * MaxScoreHolding, /*[in]*/ long Status,double LowerProtectionLevel,
-									double UpperProtectionLevel,
-									/*[in,out]*/ long * ErrorCode, /*[in,out]*/ long * ErrVNum);
+                                 /*[in]*/ long nDec, bool IsPeeper, const char* PeeperCode, /*[in]*/ bool IsHierarchical, /*[in]*/ bool IsNumeriek, 
+                                 /*[in]*/ long nPos);
+	bool CompletedTable(/*[in]*/ long Index, /*[in,out]*/ long * ErrorCode, /*[in]*/ const char* FileName, /*[in]*/ bool CalculateTotals,
+                            /*[in]*/ bool SetCalculatedTotalsAsSafe,/*[in]*/ bool ForCoverTable);
+	bool SetInTable(/*[in]*/ long Index, /*[in]*/ char* sCode[], /*[in]*/ double Shadow, /*[in]*/ double Cost, /*[in]*/ double Resp, 
+                        /*[in]*/ long Freq, /*[in]*/ double* MaxScoreCell, /*[in]*/ double* MaxScoreHolding, /*[in]*/ long Status,double LowerProtectionLevel,
+                        double UpperProtectionLevel, /*[in,out]*/ long * ErrorCode, /*[in,out]*/ long * ErrVNum);
 	void ThroughTable();
-	bool SetTotalsInCodeList(/*[in]*/ long NumberofVariables,/*[in]*/  long * VarIndex,/*[in,out]*/  long * ErrorCode, /*[in,out]*/  long *  ErrorInVarIndex);
-	bool SetInCodeList(/*[in]*/ long NumberofVar,  /*[in]*/ long * VarIndex, /*[in]*/ char* sCode[], /*[in,out]*/ long * ErrorCode, /*[in,out]*/ long * ErrorInVarIndex);
+	bool SetTotalsInCodeList(/*[in]*/ long NumberofVariables,/*[in]*/  long* VarIndex,/*[in,out]*/  long* ErrorCode, /*[in,out]*/  long*  ErrorInVarIndex);
+	bool SetInCodeList(/*[in]*/ long NumberofVar,  /*[in]*/ long* VarIndex, /*[in]*/ char* sCode[], /*[in,out]*/ long* ErrorCode, /*[in,out]*/ long* ErrorInVarIndex);
 	bool WriteCellRecords(/*[in]*/ long TableIndex, /*[in]*/ const char* FileName, /*[in]*/  long SBS, /*[in]*/ bool SBSLevel, /*[in]*/ bool SuppressEmpty, /*[in]*/ const char* FirstLine, bool ShowUnsafe, /*[in]*/ bool EmbedQuotes, long RespType);
-	void GetTotalTabelSize(/*[in]*/ long TableIndex,/*[in,out]*/ long* nCell, /*[in,out]*/ long * SizeDataCell);
+	void GetTotalTabelSize(/*[in]*/ long TableIndex,/*[in,out]*/ long* nCell, /*[in,out]*/ long* SizeDataCell);
 	long SetSecondaryJJFORMAT(/*[in]*/ long TableIndex, /*[in]*/ const char* FileName, /*[in]*/ bool WithBogus, /*[in,out]*/ long * nSetSecondary);
 	bool WriteJJFormat(/*[in]*/ long TableIndex, /*[in]*/ const char* FileName, /*[in]*/ double LowerBound,  /*[in]*/ double UpperBound, /*[in]*/ bool WithBogus , bool AsPerc, bool ForRounding);
 	bool WriteCSV(/*[in]*/ long TableIndex, /*[in]*/ const char* FileName, /*[in]*/ bool EmbedQuotes, /*[in,out]*/ long * DimSequence,long RespType);
@@ -241,32 +235,24 @@ public:
         long SetHierarchicalCodelist(/*[in]*/  long VarIndex, /*[in]*/ const char* FileName, /*[in]*/ const char* LevelString);
 	bool SetSecondaryHITAS(/*[in]*/ long TableIndex, /*[in,out]*/ long *nSetSecondary);
 	bool PrepareHITAS(/*[in]*/ long TableIndex, /*[in]*/ const char* NameParameterFile, /*[in]*/ const char* NameFilesFile, /*[in]*/ const char* TauTemp);
-	bool SetTableSafety(	long Index, bool DominanceRule,
-										long * DominanceNumber,long * DominancePerc,
-										bool PQRule,long * PriorPosteriorP,
-										long * PriorPosteriorQ,long * PriorPosteriorN,
-										long * SafeMinRecAndHoldings,
-										long * PeepPerc,long * PeepSafetyRange,long * PeepMinFreqCellAndHolding,
-										bool ApplyPeep,bool ApplyWeight, bool ApplyWeightOnSafetyRule,
-										bool ApplyHolding,bool ApplyZeroRule,
-										bool EmptyCellAsNonStructural, long NSEmptySafetyRange,
-										double ZeroSafetyRange,	long ManualSafetyPerc,
-										long * CellAndHoldingFreqSafetyPerc);
+	bool SetTableSafety(long Index, bool DominanceRule, long* DominanceNumber, long* DominancePerc, bool PQRule, long* PriorPosteriorP,
+          		    long* PriorPosteriorQ, long* PriorPosteriorN, long* SafeMinRecAndHoldings, long* PeepPerc, long* PeepSafetyRange,
+                            long* PeepMinFreqCellAndHolding, bool ApplyPeep, bool ApplyWeight, bool ApplyWeightOnSafetyRule, bool ApplyHolding,
+                            bool ApplyZeroRule, bool EmptyCellAsNonStructural, long NSEmptySafetyRange,	double ZeroSafetyRange,	long ManualSafetyPerc,
+                            long* CellAndHoldingFreqSafetyPerc);
 	bool GetTableCellValue(/*[in]*/ long TableIndex, /*[in]*/  long CellIndex, /*[in,out]*/ double *CellResponse);
-	bool GetTableCell(/*[in]*/ long TableIndex, /*[in,out]*/ long * DimIndex, /*[in,out]*/ double*CellResponse,
-        									/*[in,out] */ double *CellRoundedResp, /*[in,out] */double *CellCTAResp, 
-                                                                                /*[in,out] */ double *CellCKMResp,
-                                                                                /*[in,out]*/ double *CellShadow, /*[in,out]*/ double *CellCost, /*[in,out]*/ double *CellKey,
-										/*[in,out]*/ long *CellFreq, /*[in,out]*/ long *CellStatus,
-										/*[in,out]*/  double *CellMaxScore, /*[in,out]*/ double *CellMaxScoreWeight,
-                                                                                            long *HoldingFreq,
-                                                                                            double *HoldingMaxScore, long *HoldingNrPerMaxScore,
-                                                                                            double *PeepCell, double *PeepHolding, long *PeepSortCell, long *PeepSortHolding,
-                                                                                            double *Lower, double *Upper, double *RealizedLower, double *RealizedUpper);
+	bool GetTableCell(/*[in]*/ long TableIndex, /*[in,out]*/ long* DimIndex, /*[in,out]*/ double *CellResponse, /*[in,out] */ double *CellRoundedResp,
+                          /*[in,out] */double *CellCTAResp, /*[in,out] */ double *CellCKMResp, /*[in,out]*/ double *CellShadow, 
+                          /*[in,out]*/ double *CellCost, /*[in,out]*/ double *CellKey, /*[in,out]*/ double *CellKeyNoZeros,
+                          /*[in,out]*/ long *CellFreq, /*[in,out]*/ long *CellStatus, /*[in,out]*/  double *CellMaxScore, 
+                          /*[in,out]*/ double *CellMaxScoreWeight, long *HoldingFreq, double *HoldingMaxScore, long *HoldingNrPerMaxScore,
+                          double *PeepCell, double *PeepHolding, long *PeepSortCell, long *PeepSortHolding, double *Lower, double *Upper, 
+                          double *RealizedLower, double *RealizedUpper);
 	bool SetTable(/*[in]*/ long Index, /*[in]*/ long nDim,
 		/*[in,out]*/ long * ExplanatoryVarList, bool IsFrequencyTable,
 		/*[in]*/  long ResponseVar, /*[in]*/ long ShadowVar, /*[in]*/ long CostVar,
                 /*[in]*/  long CellKeyVar,
+                std::string CKMType, long CKMTopK,
 		double Lambda, double MaxScaledCost,
 		long PeepVarnr,bool SetMissingAsSafe);
 	bool SetVariable(/*[in]*/ long VarIndex, /*[in]*/ long bPos, /*[in]*/ long nPos,
@@ -279,10 +265,10 @@ public:
 	bool GetStatusAndCostPerDim(/*[in]*/ long TableIndex, /*[in,out]*/ long *Status, /*[in,out]*/ double *Cost);
 	bool SetTableCellStatus(/*[in]*/ long TableIndex, /*[in,out]*/ long * DimIndex, /*[in]*/ long CelStatus);
 	bool UndoRecode(/*[in]*/ long VarIndex);
-	long GetMaxnUc();
+	//long GetMaxnUc();
 	bool ExploreFile(/*[in]*/ const char* FileName, /*[in,out]*/ long * ErrorCode,  /*[in,out]*/ long * LineNumber, /*[in,out]*/ long * ErrorVarIndex);
 	bool UnsafeVariable( /*[in]*/ long VarIndex,/*[in,out]*/ long *Count, /*[in,out]*/ long * UCArray);
-	bool GetTableRow( /*[in]*/ long TableIndex, /*[in,out]*/ long *DimIndex, /*[in,out]*/ double * Cell, /*[in,out]*/ long *Status, /*[in]*/ long CountType);
+	//bool GetTableRow( /*[in]*/ long TableIndex, /*[in,out]*/ long *DimIndex, /*[in,out]*/ double * Cell, /*[in,out]*/ long *Status, /*[in]*/ long CountType);
 	bool SetHierarchicalDigits( /*[in]*/ long VarIndex, /*[in]*/ long nDigitPairs, /*[in]*/ long *nDigits);
 	void CleanAll();
 	void ApplyRecode();
@@ -291,9 +277,21 @@ public:
 	bool SetNumberTab( /*[in]*/ long nTab);
 	bool SetNumberVar(/*[in]*/ long nVar);
 	double GetMinimumCellValue(/*[in]*/ long TableIndex, /*[in,out]*/ double *Maximum);
-	bool SetProtectionLevelsForResponseTable(long TableIndex,/*[in,out]*/ long * DimIndex,/*[in]*/ double LowerBound, /*[in]*/ double UpperBound);
-	std::string GetErrorString(long ErrorNumber);
-        int SetCellKeyValues(long TabNo, const char* PTableFile, /*[out]*/ int *MinDiff, /*[out]*/ int *MaxDiff);
+	bool SetProtectionLevelsForResponseTable(/*[in]*/ long TableIndex,/*[in,out]*/ long * DimIndex,/*[in]*/ double LowerBound, /*[in]*/ double UpperBound);
+	std::string GetErrorString(/*[in]*/ long ErrorNumber);
+        std::string GetVersion();
+        int SetCellKeyValuesFreq(/*[in]*/ long TabNo, /*[in]*/ std::string PTableFile, /*[out]*/ int *MinDiff, /*[out]*/ int *MaxDiff);
+        int SetCellKeyValuesCont(/*[in]*/ long TabNo, /*[in]*/ std::string PTableFileCont, /*[in]*/ std::string PTableFileSep, 
+                                 /*[in]*/ std::string CKMType, /*[in]*/ int topK, /*[in]*/ bool IncludeZeros, /*[in]*/ bool Parity, 
+                                 /*[in]*/ bool Separation, /*[in]*/ double m1sqr, /*[in]*/ std::string Scaling, 
+                                 /*[in]*/ double s0, /*[in]*/ double s1, /*[in]*/ double z_f, /*[in]*/ double q, /*[in]*/ double* epsilon,
+                                 /*[in]*/ double muC);
+
+private:
+        double ShiftFirstDigit(double key, int nDec);
+        double flexfunction(double z, double z_s, double s0, double s1, double z_f, double q, std::string Scaling);
+        double LookUpVinptable(std::map<int,PTableDRow> ptable, double z, double RKey);
+        double GetXj(std::string CKMType, int j, CDataCell &dc, bool WeightApplied);
 };
 
 #endif // TauArgus_h

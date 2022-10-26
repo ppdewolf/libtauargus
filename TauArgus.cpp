@@ -17,6 +17,7 @@
 
 #include "TauArgus.h"
 
+#include <map>
 #include <cstdio>
 #include <cstring>
 #include <cfloat>
@@ -31,6 +32,7 @@
 #include "AMPL.h"
 #include "Properties.h"
 #include "PTable.h"
+#include "PTableCont.h"
 
 using namespace std;
 
@@ -39,6 +41,10 @@ using namespace std;
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
+
+double mysign(double x){
+    return (x >= 0.0) ? 1.0 : -1.0; // 1 in case x >= 0, -1 otherwise
+}
 
 static Properties TauArgusErrors("TauArgus.properties");
 
@@ -67,202 +73,176 @@ static Properties TauArgusErrors("TauArgus.properties");
 
 void TauArgus::SetProgressListener(IProgressListener* ProgressListener)
 {
-	m_ProgressListener = ProgressListener;
+    m_ProgressListener = ProgressListener;
 }
 
 void TauArgus::FireUpdateProgress(int Perc)
 {
-	if (m_ProgressListener != NULL) {
-		m_ProgressListener->UpdateProgress(Perc);
-	}
+    if (m_ProgressListener != NULL){
+	m_ProgressListener->UpdateProgress(Perc);
+    }
 }
 
 // cells that are set as secondary unsafe to be undone
 bool TauArgus::UndoSecondarySuppress(long TableIndex, long SortSuppress)
 {
-   if (TableIndex < 0 || TableIndex >= m_ntab) {
- 		return false;
- 	}
-	if ((SortSuppress < 1) || (SortSuppress > 3)) {
-		return false;
-	}
+    if (TableIndex < 0 || TableIndex >= m_ntab){
+ 	return false;
+    }
+    if ((SortSuppress < 1) || (SortSuppress > 3)){
+	return false;
+    }
 
-   CTable *tab = GetTable(TableIndex);
-   tab->UndoSecondarySuppress(SortSuppress);
+    CTable *tab = GetTable(TableIndex);
+    tab->UndoSecondarySuppress(SortSuppress);
 
- 	return true;
+    return true;
 }
 
 // Set number of Variables
 bool TauArgus::SetNumberVar(long nVar)
 {
-	if (nVar < 1) {
-		return false;
-	}
+    if (nVar < 1){
+	return false;
+    }
 
-   CleanUp();  // in case of a second call very usefull
+    CleanUp();  // in case of a second call very usefull
 
-	m_nvar = nVar;
-	m_var = new CVariable[m_nvar+1]; // Last variable for the empty variables
-												// if the table is a freq table etc
-	if (m_var == 0) {
-		return false;
-	}
-	m_ntab = 0;
+    m_nvar = nVar;
+    m_var = new CVariable[m_nvar+1]; // Last variable for the empty variables
+                                     // if the table is a freq table etc
+    if (m_var == 0){
+	return false;
+    }
+    m_ntab = 0;
 
-	m_var[m_nvar].nDec =0;   //Anders gaat het schrijven van JJ-files later mis!! Anco 1-6-2004
+    m_var[m_nvar].nDec =0;   //Anders gaat het schrijven van JJ-files later mis!! Anco 1-6-2004
 
-	return true;
+    return true;
 }
 
 // set number of tables
 bool TauArgus::SetNumberTab(long nTab)
 {
-	// Not the right moment, first call SetNumberVar
-	if (m_nvar == 0 || nTab < 1) {
-		return false;
-	}
+    // Not the right moment, first call SetNumberVar
+    if (m_nvar == 0 || nTab < 1){
+	return false;
+    }
 
-	// ev. delete previous tables
-	CleanTables();
+    // ev. delete previous tables
+    CleanTables();
 
-	m_ntab = nTab;
-	m_tab = new CTable[nTab + nTab];  // second part for recoded tables
-	if (m_tab == 0) {
-		return false;
-	}
+    m_ntab = nTab;
+    m_tab = new CTable[nTab + nTab];  // second part for recoded tables
+    if (m_tab == 0){
+	return false;
+    }
 
-	return true;
+    return true;
 }
 
 // Compute the Tabels. In this function all the tables are filled.
 bool TauArgus::ComputeTables(long *ErrorCode, long *TableIndex)
 {
-	// long MemSizeAll = 0, MemSizeTable;
+    // long MemSizeAll = 0, MemSizeTable;
 
-	// initialize errorcodes
-	*ErrorCode = -1;   // na
-	*TableIndex = -1;  // na
+    // initialize errorcodes
+    *ErrorCode = -1;   // na
+    *TableIndex = -1;  // na
 
-	// Not the right moment, first call SetNumberVar
-	if (m_nvar == 0) {
-		*ErrorCode = NOVARIABLES;
-		return false;
+    // Not the right moment, first call SetNumberVar
+    if (m_nvar == 0){
+	*ErrorCode = NOVARIABLES;
+	return false;
+    }
+
+    // Not the right moment, first call SetNumberTab
+    if (m_ntab == 0){
+	*ErrorCode = NOTABLES;
+	return false;
+    }
+
+    // First do Explore File
+    if (!m_CompletedCodeList){
+	*ErrorCode = NODATAFILE;
+	return false;
+    }
+
+
+    // All tables set?
+    int i;
+    for (i = 0; i < m_ntab; i++){
+	if (m_tab[i].nDim == 0){
+            *ErrorCode = TABLENOTSET;
+            return false;
 	}
+    }
 
-	// Not the right moment, first call SetNumberTab
-	if (m_ntab == 0) {
-		*ErrorCode = NOTABLES;
-		return false;
+    // Prepare each table
+    // Allocate memory for cells in tables
+    for (i = 0; i < m_ntab; i++){
+	if (!m_tab[i].PrepareTable() ){
+            *ErrorCode = NOTABLEMEMORY;
+            *TableIndex = i;
+            return false;
 	}
+    }
 
-	// First do ExploreFile
-	/* if (m_UsingMicroData)  {
-	  if (m_fname[0] == 0) {
-		 *ErrorCode = NODATAFILE;
-		 return false;
-	  }
-  }*/
 
-	// First do Explore File
-	if (!m_CompletedCodeList)  {
-		*ErrorCode = NODATAFILE;
-		return false;
+    // do datafile
+    FILE *fd = fopen(m_fname, "r");
+    if (fd == 0){
+	*ErrorCode = FILENOTFOUND;
+	return false;
+    }
+
+
+    int recnr = 0;
+    while (!feof(fd) ){
+	char str[MAXRECORDLENGTH];
+	int res = ReadMicroRecord(fd, str);
+	if (++recnr % FIREPROGRESS == 0){
+            FireUpdateProgress((int)(ftell(fd) * 100.0 / m_fSize));  // for progressbar in container
 	}
-
-
-	// All tables set?
-	int i;
-	for (i = 0; i < m_ntab; i++) {
-		if (m_tab[i].nDim == 0) {
-			*ErrorCode = TABLENOTSET;
-			return false;
-		}
-		/*if (m_tab[i].SafetyRule == 0) {
-			*ErrorCode = TABLENOTSET;
-			return false;
-		}*/
-  }
-
-/* Is nu een aparte functie zie boven
-
-  // compute memory size for each table
-  for (i = 0; i < m_ntab; i++) {
-    MemSizeTable = m_tab[i].GetMemSizeTable();
-    MemSizeAll += MemSizeTable;
-  }
-
-  // check total memory to use
-  if (MemSizeAll > MAXMEMORYUSE) {
-    *ErrorCode = NOTENOUGHMEMORY;
-    return false;
-  }
-*/
-	// Prepare each table
-	// Allocate memory for cells in tables
-	for (i = 0; i < m_ntab; i++) {
-		if (!m_tab[i].PrepareTable() ) {
-			*ErrorCode = NOTABLEMEMORY;
-			*TableIndex = i;
-			return false;
-		}
-		// m_tab[i].nCell = m_tab[i].GetSizeTable();
-  }
-
-
-	// do datafile
-	FILE *fd = fopen(m_fname, "r");
-	if (fd == 0) {
-		*ErrorCode = FILENOTFOUND;
-		return false;
+	switch (res){
+            case -1:  // error
+		goto error;
+		break;
+            case 0:  // eof
+		goto oke;
+		break;
+            case 1:
+		// here is where tables are filled
+		FillTables(str);
+		break;
 	}
-
-
-	int recnr = 0;
-	while (!feof(fd) ) {
-		char str[MAXRECORDLENGTH];
-		int res = ReadMicroRecord(fd, str);
-		if (++recnr % FIREPROGRESS == 0) {
-			FireUpdateProgress((int)(ftell(fd) * 100.0 / m_fSize));  // for progressbar in container
-		}
-		switch (res) {
-			case -1:  // error
-				goto error;
-				break;
-			case 0:  // eof
-				goto oke;
-				break;
-			case 1:
-				// here is where tables are filled
-				FillTables(str);
-				break;
-		}
-	}
+    }
 
 oke:
-	fclose(fd);
-	FireUpdateProgress(100);  // for progressbar in container
-	// Once more add freq
-	// For holding tables the last holding has to be
-	// corrected
-	MergeLastTempShadow();
+    fclose(fd);
+    FireUpdateProgress(100);  // for progressbar in container
+    // Once more add freq
+    // For holding tables the last holding has to be
+    // corrected
+    MergeLastTempShadow();
 
 
-	// compute Status Cells for all base tables
-	for (i = 0; i < m_ntab; i++) {
-            ComputeCellStatuses(m_tab[i]);
-	}
+    // compute Status Cells for all base tables
+    for (i = 0; i < m_ntab; i++){
+        ComputeCellStatuses(m_tab[i]);
+    }
 
-	// compute protection levels
-	for (i=0; i<m_ntab; i++)	{
-            SetProtectionLevels(m_tab[i]);
-	}
+    // compute protection levels
+    for (i=0; i<m_ntab; i++){
+        SetProtectionLevels(m_tab[i]);
+    }
         
-        // compute cellkey from added recordkeys
-        // only if record key variable is present
-        for (i=0; i<m_ntab;i++){
-            if (m_tab[i].CellKeyVarnr>=0){ ComputeCellKeys(m_tab[i]); }
-        }
+    // compute cellkey from added recordkeys
+    // only if record key variable is present
+    // [30-06-2020] taking fractional part is already done when contructing tablecell, so no longer needed
+    /*for (i=0; i<m_ntab;i++){
+        if (m_tab[i].CellKeyVarnr>=0){ ComputeCellKeys(m_tab[i]); }
+    }*/
 
 
 #ifdef _DEBUGG
@@ -275,837 +255,830 @@ oke:
 }
 #endif // _DEBUG
 
-	for (i = 0; i < m_nvar; i++) {
-		if (m_var[i].IsHierarchical && m_var[i].nDigitSplit == 0) {
-			// empty no longer needed arrays
-			m_var[i].hLevel.clear();
-			m_var[i].hLevelBasic.clear();
-		}
-	}
-	return true;
+    for (i = 0; i < m_nvar; i++) {
+        if (m_var[i].IsHierarchical && m_var[i].nDigitSplit == 0){
+            // empty no longer needed arrays
+            m_var[i].hLevel.clear();
+            m_var[i].hLevelBasic.clear();
+        }
+    }
+    return true;
 
 error:
-	// You could change the errors with throws.
-	fclose(fd);
-	return false;
-
+    // You could change the errors with throws.
+    fclose(fd);
+    return false;
 }
 
 bool TauArgus::DoRecode(long VarIndex, const char* RecodeString, long nMissing, const char* eMissing1, const char* eMissing2,
-												long *ErrorType, long *ErrorLine, long *ErrorPos,
-												const char** WarningString)
+			long *ErrorType, long *ErrorLine, long *ErrorPos, const char** WarningString)
 {
+    // RecodeStrings are changed to string. Check this out
+    int i, v = VarIndex, oke, maxwidth = 0;
+    *ErrorType = *ErrorLine = *ErrorPos = -1;
 
-	// RecodeStrings are changed to string. Check this out
-	int i, v = VarIndex, oke, maxwidth = 0;
-	*ErrorType = *ErrorLine = *ErrorPos = -1;
+    string Missing1 = eMissing1;
+    string Missing2 = eMissing2;
 
-	string Missing1 = eMissing1;
-	string Missing2 = eMissing2;
+    // for warnings
+    m_nOverlap = 0;
+    m_nUntouched = 0;
+    m_nNoSense = 0;
 
-	// for warnings
-	m_nOverlap = 0;
-	m_nUntouched = 0;
-	m_nNoSense = 0;
+    m_WarningRecode.resize(0);
 
-	m_WarningRecode.resize(0);
+    // too early?
+    /*
+    if (m_nvar == 0 || m_ntab == 0 || m_fname[0] == 0) {
+        *ErrorType =  E_NOVARTABDATA;
+	return false;
+    }
+    */
+    if (m_nvar == 0 || m_ntab == 0 || !m_CompletedCodeList){
+        *ErrorType =  E_NOVARTABDATA;
+	return false;
+    }
 
-	  // too early?
-	  /*
-	  if (m_nvar == 0 || m_ntab == 0 || m_fname[0] == 0) {
-		 *ErrorType =  E_NOVARTABDATA;
-		 return false;
-	  }
-	  */
+    // wrong VarIndex
+    if (v < 0 || v >= m_nvar || !m_var[v].IsCategorical){
+	*ErrorType =  E_VARINDEXWRONG;
+	return false;
+    }
 
-	if (m_nvar == 0 || m_ntab == 0 || !m_CompletedCodeList) {
-		*ErrorType =  E_NOVARTABDATA;
-		return false;
+    // remove existing one, if needed
+    // have problems here
+    /*
+    if (m_var[v].HasRecode) {
+	UndoRecode(VarIndex);
+    }*/
+
+    // only check syntax, phase = CHECK
+    oke = ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, CHECK);
+    if (!oke){
+    	return false;
+    }
+
+    // recode oke
+
+    // remove old recode
+    if (m_var[v].Recode.DestCode != 0){
+	free(m_var[v].Recode.DestCode);
+	m_var[v].Recode.DestCode = 0;
+    }
+
+    // initialize new recode
+    m_var[v].Recode.DestCode = (int *) malloc(m_var[v].nCode * sizeof(int) );
+    if (m_var[v].Recode.DestCode == 0){
+	*ErrorType = NOTENOUGHMEMORY;
+	return false;
+    }
+
+    for (i = 0; i < m_var[v].nCode; i++){
+	if (m_var[v].IsCodeBasic(i) ) m_var[v].Recode.DestCode[i] = -1;  // no (sub)total
+	else                          m_var[v].Recode.DestCode[i] = -2;  // (sub)total
+    }
+
+    // Missing2 specified but not Missing1? Swap!
+    if (Missing1.empty() && !Missing2.empty()){
+	Missing1 = Missing2;
+    }
+
+    // no missings for recode specified? Take the missing(s) of the source
+    if (Missing1.empty() && Missing2.empty()){
+	Missing1 = m_var[v].Missing1;
+	if (m_var[v].nMissing == 2){
+            Missing2 = m_var[v].Missing2;
 	}
-
-	// wrong VarIndex
-	if (v < 0 || v >= m_nvar || !m_var[v].IsCategorical) {
-		*ErrorType =  E_VARINDEXWRONG;
-		return false;
+	else{
+            Missing2 = Missing1;
 	}
+    }
 
-	// remove existing one, if needed
-	// have problems here
-	/*
-	if (m_var[v].HasRecode) {
-			UndoRecode(VarIndex);
-		}*/
+    m_var[v].Recode.sCode.clear();
+    m_var[v].Recode.nCode = 0;
+    m_var[v].Recode.CodeWidth = 0;
+    m_var[v].Recode.nMissing = 0;
 
-  // only check syntax, phase = CHECK
-	oke = ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, CHECK);
-	if (!oke) {
-		return false;
+    m_var[v].Recode.sCode.push_back(""); // for Total
+
+    // another time, now compute list of dest codes
+    ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, DESTCODE);
+    if (m_var[v].Recode.sCode.size() < 2){
+	*ErrorType = E_EMPTYSPEC;
+	*ErrorLine = 1;
+	*ErrorPos = 1;
+	return false;
+    }
+    // sort list of dest codes, still without missing values (coming soon)
+    QuickSortStringArray(m_var[v].Recode.sCode);
+
+
+    // now the number of codes is known, but not the not mentioned ones
+    // m_var[v].Recode.nCode = m_var[v].Recode.sCode.GetSize();
+
+    // again, now compute dest codes and link between dest and src
+    oke = ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, SRCCODE);
+    if (!oke){
+	return false; // missing to valid codes, a terrible shame
+    }
+
+    // compute untouched codes, add them to the recode codelist
+    m_nUntouched = 0;
+    for (i = 0; i < m_var[v].nCode - m_var[v].nMissing; i++){
+	if (m_var[v].Recode.DestCode[i] == -1){ // not touched
+            m_nUntouched++;
+            AddRecode(v, m_var[v].sCode[i].c_str());
 	}
+    }
 
-	// recode oke
+    // make all recode codes same width
+    maxwidth = MakeRecodelistEqualWidth(v, Missing1.c_str(), (LPCTSTR) Missing2.c_str());
 
-	// remove old recode
-	if (m_var[v].Recode.DestCode != 0) {
-		free(m_var[v].Recode.DestCode);
-		m_var[v].Recode.DestCode = 0;
+    // remove the missing codes,
+    
+    if (!((nMissing == 0) && (m_var[v].nMissing ==0))){
+	int n;
+	bool IsMissing;
+	string mis = Missing1;
+	AddSpacesBefore(mis, maxwidth);
+	if (n = BinSearchStringArray(m_var[v].Recode.sCode, mis, 0, IsMissing), n >= 0){
+            vector<string>::iterator p = m_var[v].Recode.sCode.begin() + n;
+            m_var[v].Recode.sCode.erase(p);
 	}
-
-	// initialize new recode
-	m_var[v].Recode.DestCode = (int *) malloc(m_var[v].nCode * sizeof(int) );
-	if (m_var[v].Recode.DestCode == 0) {
-		*ErrorType = NOTENOUGHMEMORY;
-		return false;
+	mis = Missing2;
+	AddSpacesBefore(mis, maxwidth);
+	if (n = BinSearchStringArray(m_var[v].Recode.sCode, mis, 0, IsMissing), n >= 0){
+            vector<string>::iterator p = m_var[v].Recode.sCode.begin() + n;
+            m_var[v].Recode.sCode.erase(p);
 	}
+    }
+    
 
-	for (i = 0; i < m_var[v].nCode; i++) {
-		if (m_var[v].IsCodeBasic(i) ) m_var[v].Recode.DestCode[i] = -1;  // no (sub)total
-		else                          m_var[v].Recode.DestCode[i] = -2;  // (sub)total
-	}
+    // sort list of dest codes, still without missing values (coming soon)
+    QuickSortStringArray(m_var[v].Recode.sCode);
 
-	// Missing2 specified but not Missing1? Swap!
-	if (Missing1.empty() && !Missing2.empty()) {
-		Missing1 = Missing2;
-	}
+    // ADD MISSING1 AND -2
+    // both empty impossible, see start of function
+    // swap missings if missing1 empty
 
-	// no missings for recode specified? Take the missing(s) of the source
-	if (Missing1.empty() && Missing2.empty()) {
-		Missing1 = m_var[v].Missing1;
-		if (m_var[v].nMissing == 2) {
-			Missing2 = m_var[v].Missing2;
-		}
-		else {
-			Missing2 = Missing1;
-		}
-	}
+    if (!((nMissing == 0) && (m_var[v].nMissing ==0))){
 
-	m_var[v].Recode.sCode.clear();
-	m_var[v].Recode.nCode = 0;
-	m_var[v].Recode.CodeWidth = 0;
-	m_var[v].Recode.nMissing = 0;
+        if (Missing1.empty() && Missing2.empty()){             // no missing specified?
+            m_var[v].Recode.Missing1 = m_var[v].Missing1;  // take the missing of source variable
+            m_var[v].Recode.Missing2 = m_var[v].Missing2;
+        }
+        else{
+            if (Missing1.empty()){  // at least one missing specified
+                m_var[v].Recode.Missing1 = Missing2;
+                m_var[v].Recode.Missing2 = Missing1;
+            }
+            else{
+                m_var[v].Recode.Missing1 = Missing1;
+                m_var[v].Recode.Missing2 = Missing2;
+            }
+        }
 
-	m_var[v].Recode.sCode.push_back(""); // for Total
+        // second empty?
+        if (m_var[v].Recode.Missing2.empty()) {
+            m_var[v].Recode.Missing2 = m_var[v].Recode.Missing1;
+            m_var[v].Recode.nMissing = 1;
+        }
+        else {
+            // equal?
+            if (m_var[v].Recode.Missing1 == m_var[v].Recode.Missing2){
+                m_var[v].Recode.nMissing = 1;
+            }
+            else{
+                m_var[v].Recode.nMissing = 2;
+            }
+        }
 
-	// another time, now compute list of dest codes
-	ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, DESTCODE);
-	if (m_var[v].Recode.sCode.size() < 2) {
-		*ErrorType = E_EMPTYSPEC;
-		*ErrorLine = 1;
-		*ErrorPos = 1;
-		return false;
-	}
-	// sort list of dest codes, still without missing values (coming soon)
-	QuickSortStringArray(m_var[v].Recode.sCode);
+        // put in list, last one or two
+        AddSpacesBefore(m_var[v].Recode.Missing1, maxwidth);
+        AddRecode(v, m_var[v].Recode.Missing1.c_str());
+        if (m_var[v].Recode.nMissing == 2) {
+            AddSpacesBefore(m_var[v].Recode.Missing2, maxwidth);
+            AddRecode(v, m_var[v].Recode.Missing2.c_str());
+        }
+    }
+    // last time, now compute dest codes and link between dest and src
+    // for warnings
+    m_nOverlap = 0;
+    m_nNoSense = 0;
+    for (i = 0; i < m_var[v].nCode; i++) {
+        if (m_var[v].IsCodeBasic(i) ) m_var[v].Recode.DestCode[i] = -1;  // no (sub)total
+        else                          m_var[v].Recode.DestCode[i] = -2;  // (sub)total
+    }
 
+    oke = ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, SRCCODE);
+    if (!oke) {
+        return false; // missing to valid codes, a terrible shame
+    }
 
-	// now the number of codes is known, but not the not mentioned ones
-	// m_var[v].Recode.nCode = m_var[v].Recode.sCode.GetSize();
-
-	// again, now compute dest codes and link between dest and src
-	oke = ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, SRCCODE);
-	if (!oke) {
-		return false; // missing to valid codes, a terrible shame
-	}
-
-	// compute untouched codes, add them to the recode codelist
-	m_nUntouched = 0;
-	for (i = 0; i < m_var[v].nCode - m_var[v].nMissing; i++) {
-		if (m_var[v].Recode.DestCode[i] == -1) { // not touched
-			m_nUntouched++;
-			AddRecode(v, m_var[v].sCode[i].c_str());
-		}
-	}
-
-	// make all recode codes same width
-	maxwidth = MakeRecodelistEqualWidth(v, Missing1.c_str(), (LPCTSTR) Missing2.c_str());
-
-	// remove the missing codes,
-	{
-		if (!((nMissing == 0) && (m_var[v].nMissing ==0)))	{
-			int n;
-			bool IsMissing;
-			string mis = Missing1;
-			AddSpacesBefore(mis, maxwidth);
-			if (n = BinSearchStringArray(m_var[v].Recode.sCode, mis, 0, IsMissing), n >= 0) {
-				vector<string>::iterator p = m_var[v].Recode.sCode.begin() + n;
-				m_var[v].Recode.sCode.erase(p);
-			}
-			mis = Missing2;
-			AddSpacesBefore(mis, maxwidth);
-			if (n = BinSearchStringArray(m_var[v].Recode.sCode, mis, 0, IsMissing), n >= 0) {
-				vector<string>::iterator p = m_var[v].Recode.sCode.begin() + n;
-				m_var[v].Recode.sCode.erase(p);
-			}
-		}
-	}
-
-	// sort list of dest codes, still without missing values (coming soon)
-	QuickSortStringArray(m_var[v].Recode.sCode);
-
-	// ADD MISSING1 AND -2
-	// both empty impossible, see start of function
-	// swap missings if missing1 empty
-
-	if (!((nMissing == 0) && (m_var[v].nMissing ==0)))	{
-
-		if (Missing1.empty() && Missing2.empty()) {             // no missing specified?
-			m_var[v].Recode.Missing1 = m_var[v].Missing1;  // take the missing of source variable
-			m_var[v].Recode.Missing2 = m_var[v].Missing2;
-		}
-		else {
-			if (Missing1.empty()) {  // at least one missing specified
-				m_var[v].Recode.Missing1 = Missing2;
-				m_var[v].Recode.Missing2 = Missing1;
-			}
-			else {
-				m_var[v].Recode.Missing1 = Missing1;
-				m_var[v].Recode.Missing2 = Missing2;
-			}
-		}
-
-		// second empty?
-	if (m_var[v].Recode.Missing2.empty()) {
-		m_var[v].Recode.Missing2 = m_var[v].Recode.Missing1;
-		m_var[v].Recode.nMissing = 1;
-	}
-	else {
-		// equal?
-		if (m_var[v].Recode.Missing1 == m_var[v].Recode.Missing2) {
-			m_var[v].Recode.nMissing = 1;
-		}
-		else {
-			m_var[v].Recode.nMissing = 2;
-		}
-	}
-
-	// put in list, last one or two
-	AddSpacesBefore(m_var[v].Recode.Missing1, maxwidth);
-	AddRecode(v, m_var[v].Recode.Missing1.c_str());
-	if (m_var[v].Recode.nMissing == 2) {
-		 AddSpacesBefore(m_var[v].Recode.Missing2, maxwidth);
-		 AddRecode(v, m_var[v].Recode.Missing2.c_str());
-	}
-}
-  // last time, now compute dest codes and link between dest and src
-  // for warnings
-	m_nOverlap = 0;
-	m_nNoSense = 0;
-	for (i = 0; i < m_var[v].nCode; i++) {
-		if (m_var[v].IsCodeBasic(i) ) m_var[v].Recode.DestCode[i] = -1;  // no (sub)total
-		else                          m_var[v].Recode.DestCode[i] = -2;  // (sub)total
-	}
-
-	oke = ParseRecodeString(v, RecodeString, ErrorType, ErrorLine, ErrorPos, SRCCODE);
-	if (!oke) {
-		return false; // missing to valid codes, a terrible shame
-	}
-
-	// yep, the number of codes is known and the codes are sorted (except one or two MISSINGs at the end of te list)
-	m_var[v].Recode.nCode = m_var[v].Recode.sCode.size();
+    // yep, the number of codes is known and the codes are sorted (except one or two MISSINGs at the end of te list)
+    m_var[v].Recode.nCode = m_var[v].Recode.sCode.size();
 
 
-	// do the same for MISSINGS, more complicated
-  {
-		RECODE *c = &(m_var[v].Recode); // for easier reference
+    // do the same for MISSINGS, more complicated
+    {
+        RECODE *c = &(m_var[v].Recode); // for easier reference
 
-		i = m_var[v].nCode - m_var[v].nMissing;     // first missing
-		if (c->DestCode[i] == -1) {                 // missing 1 not specified
-			c->DestCode[i] = c->nCode - c->nMissing;  // make missing1 equal to missing1 source
-		}
-		if (m_var[v].nMissing == 2) {               // two missings in source?
-			i++;
-			if (c->nMissing == 2) {                   // two missings in dest?
-				if (c->DestCode[i] == -1) {                     // missing 2 not specified
-					c->DestCode[i] = c->nCode - c->nMissing + 1;  // make missing2 equal to missing2 source
-				}
-			}
-			else {
-				if (c->DestCode[i] == -1) {                 // missing 2 not specified
-					c->DestCode[i] = c->nCode - c->nMissing;  // make missing2 equal to missing1 source
-				}
-			}
-		}
-	}
+        i = m_var[v].nCode - m_var[v].nMissing;     // first missing
+        if (c->DestCode[i] == -1) {                 // missing 1 not specified
+            c->DestCode[i] = c->nCode - c->nMissing;  // make missing1 equal to missing1 source
+        }
+        if (m_var[v].nMissing == 2) {               // two missings in source?
+            i++;
+            if (c->nMissing == 2) {                   // two missings in dest?
+                if (c->DestCode[i] == -1) {                     // missing 2 not specified
+                    c->DestCode[i] = c->nCode - c->nMissing + 1;  // make missing2 equal to missing2 source
+                }
+            }
+            else {
+                if (c->DestCode[i] == -1) {                 // missing 2 not specified
+                    c->DestCode[i] = c->nCode - c->nMissing;  // make missing2 equal to missing1 source
+                }
+            }
+        }
+    }
+   
+    // set untouched codes on right index
+    {
+        RECODE *c = &(m_var[v].Recode); // for easier reference
+        bool IsMissing;
+        int index, ncode = m_var[v].nCode - m_var[v].nMissing;
+        for (i = 0; i < ncode; i++) {
+            if (c->DestCode[i] == -1) {
+                string str = m_var[v].sCode[i];
+                AddSpacesBefore(str, c->CodeWidth);
+                index = BinSearchStringArray(c->sCode, str, c->nMissing, IsMissing);
+                ASSERT(index >= 0 && index < c->nCode);
+                c->DestCode[i] = index;
+            }
+        }
+    }
+    
+    // WARNINGS in recode:
 
-	// set untouched codes on right index
-  {
-		RECODE *c = &(m_var[v].Recode); // for easier reference
-		bool IsMissing;
-		int index, ncode = m_var[v].nCode - m_var[v].nMissing;
-		for (i = 0; i < ncode; i++) {
-			if (c->DestCode[i] == -1) {
-				string str = m_var[v].sCode[i];
-				AddSpacesBefore(str, c->CodeWidth);
-				index = BinSearchStringArray(c->sCode, str, c->nMissing, IsMissing);
-				ASSERT(index >= 0 && index < c->nCode);
-				c->DestCode[i] = index;
-			}
-		}
-	}
+    // show untouched codes:
+    ostringstream ss;
+    if (m_nUntouched > 0) {
+        ss << "Number of untouched codes: " << m_nUntouched << "\r\n";
+    }
 
-	// WARNINGS in recode:
+    // show warnings
+    if (m_nOverlap > 0) {
+	ss << "Number of overlapping codes: " << m_nOverlap << "\r\n";
+    }
 
-  // show untouched codes:
-  ostringstream ss;
-	if (m_nUntouched > 0) {
-		ss << "Number of untouched codes: " << m_nUntouched << "\r\n";
-	}
+    if (m_nNoSense > 0) {
+	ss << "Number of \"no sense\" codes: " << m_nNoSense << "\r\n";
+    }
+    m_WarningRecode = ss.str();
 
-	// show warnings
-	if (m_nOverlap > 0) {
-		ss << "Number of overlapping codes: " << m_nOverlap << "\r\n";
-	}
+    if (m_WarningRecode.empty() ) {
+	m_WarningRecode = "Recode OK";
+    }
 
-	if (m_nNoSense > 0) {
-		ss << "Number of \"no sense\" codes: " << m_nNoSense << "\r\n";
-	}
-	m_WarningRecode = ss.str();
+    *WarningString = m_WarningRecode.c_str();
 
-	if (m_WarningRecode.empty() ) {
-		m_WarningRecode = "Recode OK";
-	}
+    m_var[v].HasRecode = true;
 
+    m_var[v].Recode.nCode = m_var[v].Recode.sCode.size();
 
-	*WarningString = m_WarningRecode.c_str();
+    m_var[v].Recode.sCode[0] = "";
 
-	m_var[v].HasRecode = true;
-
-	m_var[v].Recode.nCode = m_var[v].Recode.sCode.size();
-
-	m_var[v].Recode.sCode[0] = "";
-
-	return true;
+    return true;
 }
 
 // Apply Recoding. You need this for recoding tables
 void TauArgus::ApplyRecode()
 {
-	ComputeRecodeTables();
+    ComputeRecodeTables();
 }
 
 // Clean all allocated memory. Destructor does this
 void TauArgus::CleanAll()
 {
-	CleanUp();
+    CleanUp();
 }
 
 // Used for setting Hierarchical Variables with digit Split
 bool TauArgus::SetHierarchicalDigits(long VarIndex, long nDigitPairs, long *nDigits)
 {
-	if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsHierarchical) {
-		return false;
-	}
+    if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsHierarchical){
+	return false;
+    }
 
-	if (m_var[VarIndex].hLevel.size() != 0) {
-		return false;
-	}
+    if (m_var[VarIndex].hLevel.size() != 0){
+	return false;
+    }
 
-	// return m_var[VarIndex].SetHierarchicalDigits(nDigitPairs, nDigits);
-	if (m_var[VarIndex].SetHierarchicalDigits(nDigitPairs, nDigits) == 0)	{
-			return false;
-	}
-	else	{
-		return true;
-	}
+    // return m_var[VarIndex].SetHierarchicalDigits(nDigitPairs, nDigits);
+    if (m_var[VarIndex].SetHierarchicalDigits(nDigitPairs, nDigits) == 0){
+	return false;
+    }
+    else{
+	return true;
+    }
 }
 
 // For every row get all cells with corresponding information
-bool TauArgus::GetTableRow(long TableIndex, long *DimIndex, double *Cell,
-													long *Status, long CountType)
+// Not used in GUI nor in this dll????
+/*bool TauArgus::GetTableRow(long TableIndex, long *DimIndex, double *Cell,
+			   long *Status, long CountType)
 {
-	int coldim = -1, nCodes;
-	long DimNr[MAXDIM];
-	long DoAudit, CountTypeLocal;
+    int coldim = -1, nCodes;
+    long DimNr[MAXDIM];
+    long DoAudit, CountTypeLocal;
 
-	// check parameters
-	if (TableIndex < 0 || TableIndex >= m_ntab) {
-		return false;
-	}
+    // check parameters
+    if (TableIndex < 0 || TableIndex >= m_ntab) {
+	return false;
+    }
     DoAudit = 0;
-	CountTypeLocal = CountType;
-	if (CountTypeLocal < 0 ) {
-		DoAudit = 1;
+    CountTypeLocal = CountType;
+    if (CountTypeLocal < 0 ) {
+	DoAudit = 1;
         CountTypeLocal = -CountTypeLocal;
-	}
+    }
 
-	CTable *Table = GetTable(TableIndex);
+    CTable *Table = GetTable(TableIndex);
 
-	// check DimIndices
-	for (int i = 0; i < Table->nDim; i++) {
-		CVariable *var = &(m_var[Table->ExplVarnr[i]]);
-		nCodes = var->GetnCode();
-		DimNr[i] = DimIndex[i];
-		switch (DimIndex[i]) {
-			case -1:
-				if (coldim == -1) {
-					coldim = i;
-				}
-				else {
-					return false;  // more than one coldim specified
-				}
-				break;
-			default:
-				if (DimIndex[i] < 0 || DimIndex[i] >= nCodes) {
-					return false;
-				}
-				break;
+    // check DimIndices
+    for (int i = 0; i < Table->nDim; i++) {
+	CVariable *var = &(m_var[Table->ExplVarnr[i]]);
+	nCodes = var->GetnCode();
+	DimNr[i] = DimIndex[i];
+	switch (DimIndex[i]) {
+            case -1:
+		if (coldim == -1) {
+                    coldim = i;
 		}
-	}
+		else {
+                    return false;  // more than one coldim specified
+		}
+		break;
+            default:
+		if (DimIndex[i] < 0 || DimIndex[i] >= nCodes) {
+                    return false;
+		}
+		break;
+        }
+    }
 
-	if (coldim == -1) { // no coldim specified
+    if (coldim == -1) { // no coldim specified
+	return false;
+    }
+
+    // parameters oke
+    CDataCell *dc;
+    nCodes = m_var[Table->ExplVarnr[coldim]].GetnCode();
+    for (int c = 0; c < nCodes; c++) {
+	// fill table row cells
+	DimNr[coldim] = c;
+	dc = Table->GetCell(DimNr); // get pointer to cell from table
+	switch (CountTypeLocal) {
+            case CT_RESPONS:
+		Cell[c] = dc->GetResp();
+		break;
+            case CT_SHADOW:
+		Cell[c] = dc->GetShadow();
+		break;
+            case CT_COST:
+		Cell[c] = dc->GetCost(Table->Lambda);
+		break;
+            case CT_ROUNDEDRESP:
+		Cell[c] = dc->GetRoundedResponse();
+		break;
+            case CT_CTA:
+                Cell[c] = dc->GetCTAValue();
+		break;
+            case CT_CKM:
+                Cell[c] = dc->GetCKMValue();
+            default:
 		return false;
 	}
 
-	// parameters oke
-	CDataCell *dc;
-	nCodes = m_var[Table->ExplVarnr[coldim]].GetnCode();
-	for (int c = 0; c < nCodes; c++) {
-		// fill table row cells
-		DimNr[coldim] = c;
-		dc = Table->GetCell(DimNr); // get pointer to cell from table
-		switch (CountTypeLocal) {
-			case CT_RESPONS:
-				Cell[c] = dc->GetResp();
-				break;
-			case CT_SHADOW:
-				Cell[c] = dc->GetShadow();
-				break;
-			case CT_COST:
-				Cell[c] = dc->GetCost(Table->Lambda);
-				break;
-			case CT_ROUNDEDRESP:
-				 Cell[c] = dc->GetRoundedResponse();
-				 break;
-			case CT_CTA:
-				 Cell[c] = dc->GetCTAValue();
-				 break;
-			default:
-				return false;
+	// set Status
+	Status[c] = dc->GetStatus();
+	if (DoAudit==1) {
+            double XRL, XRU, XPL, XPU, XC;
+            if ((Status[c] >= CS_UNSAFE_RULE) && (Status[c] <= CS_UNSAFE_MANUAL )) {
+		XRL = dc->GetRealizedLowerValue();
+		XRU = dc->GetRealizedUpperValue();
+		XPL = dc->GetLowerProtectionLevel();
+		XPU = dc->GetUpperProtectionLevel();
+		XC =  dc->GetResp();
+		if ( (XRU < (XC + XPU)) || (XRL > (XC-XPL)) ){
+                    Status[c] = -Status[c];
 		}
+            }//prim
+            if ((Status[c] == CS_SECONDARY_UNSAFE) || (Status[c] == CS_SECONDARY_UNSAFE_MANUAL )) {
+  		XRL = dc->GetRealizedLowerValue();
+		XRU = dc->GetRealizedUpperValue();
+		XC =  dc->GetResp();
+		if ((XRU==XC) && (XRL==XC)) {
+                    Status[c]=-Status[c];
+		}
+            } // sec
+        } //if audit
+    } //for
 
-		// set Status
-		Status[c] = dc->GetStatus();
-		if (DoAudit==1) {
-		  double 	XRL, XRU, XPL, XPU, XC;
-		  if ((Status[c] >= CS_UNSAFE_RULE) && (Status[c] <= CS_UNSAFE_MANUAL )) {
-			XRL = dc->GetRealizedLowerValue();
-			XRU = dc->GetRealizedUpperValue();
-			XPL = dc->GetLowerProtectionLevel();
-			XPU = dc->GetUpperProtectionLevel();
-			XC =  dc->GetResp();
-
-			if ( (XRU < (XC + XPU)) || (XRL > (XC-XPL)) ){
-				Status[c] = -Status[c];
-			}
-		  }//prim
-		  if ((Status[c] == CS_SECONDARY_UNSAFE) || (Status[c] == CS_SECONDARY_UNSAFE_MANUAL )) {
-  			XRL = dc->GetRealizedLowerValue();
-			XRU = dc->GetRealizedUpperValue();
-			XC =  dc->GetResp();
-			if ((XRU==XC) && (XRL==XC)) {
-				Status[c]=-Status[c];
-			}
-		  } // sec
-		} //if audit
-	} //for
-
-	return true;
-}
+    return true;
+}*/
 
 // return information about Unsafe Variable
 bool TauArgus::UnsafeVariable(long VarIndex, long *Count, long *UCArray)
 {
-	int t;
+    int t;
 
-	if (VarIndex < 0 || VarIndex >= m_nvar) {
-		return false;
+    if (VarIndex < 0 || VarIndex >= m_nvar) {
+	return false;
+    }
+
+    // compute count
+    *Count = 0;
+    for (t = 0; t < m_ntab; t++) {
+	CTable *tab = GetTable(t);
+	if (tab->nDim > *Count) {
+            *Count = tab->nDim;
+    	}
+    }
+
+    memset(UCArray, 0, *Count * sizeof(long) );
+
+    // compute nUnsafe for variable VarIndex, add to UCArray
+    long nUnsafe[MAXDIM];
+    for (t = 0; t < m_ntab; t++) {
+	CTable *tab = GetTable(t);
+	int var;
+	for (var = 0; var < tab->nDim; var++) {
+            if (tab->ExplVarnr[var] == VarIndex) break;  // hebbes
 	}
-
-	// compute count
-	*Count = 0;
-	for (t = 0; t < m_ntab; t++) {
-		CTable *tab = GetTable(t);
-		if (tab->nDim > *Count) {
-			*Count = tab->nDim;
-		}
+	if (var < tab->nDim) {
+            tab->GetUnsafeCells(VarIndex, nUnsafe);
+            for (int i = 0; i < tab->nDim; i++) {
+		UCArray[i] += nUnsafe[i];
+            }
 	}
+    }
 
-	memset(UCArray, 0, *Count * sizeof(long) );
+    TRACE("Var %d unsafe %d %d %d\n", VarIndex, UCArray[0], UCArray[1], UCArray[2]);
 
-	// compute nUnsafe for variable VarIndex, add to UCArray
-	long nUnsafe[MAXDIM];
-	for (t = 0; t < m_ntab; t++) {
-		CTable *tab = GetTable(t);
-		int var;
-		for (var = 0; var < tab->nDim; var++) {
-			if (tab->ExplVarnr[var] == VarIndex) break;  // hebbes
-		}
-		if (var < tab->nDim) {
-			tab->GetUnsafeCells(VarIndex, nUnsafe);
-			for (int i = 0; i < tab->nDim; i++) {
-				UCArray[i] += nUnsafe[i];
-			}
-		}
-	}
-
-	TRACE("Var %d unsafe %d %d %d\n", VarIndex, UCArray[0], UCArray[1], UCArray[2]);
-
-	return true;
+    return true;
 }
 
 // In this function the input file is read and the code list is built
 bool TauArgus::ExploreFile(const char* FileName, long *ErrorCode, long *LineNumber, long *ErrorVarIndex)
 {
-   char str[MAXRECORDLENGTH];
-   int i, length, recnr = 0, Result;
+    char str[MAXRECORDLENGTH];
+    int i, length, recnr = 0, Result;
 
-   *ErrorCode = *LineNumber = 0;
-   *ErrorVarIndex = -1;
+    *ErrorCode = *LineNumber = 0;
+    *ErrorVarIndex = -1;
 
-   if (m_nvar == 0) {
-		*ErrorCode = NOVARIABLES;
+    if (m_nvar == 0) {
+        *ErrorCode = NOVARIABLES;
+	return false;
+    }
+
+    for (i = 0; i < m_nvar; i++) {
+        if (InFileIsFixedFormat) {
+            if (m_var[i].bPos < 0) {
+                *ErrorCode = VARIABLENOTSET;
 		return false;
-   }
-
-	for (i = 0; i < m_nvar; i++) {
-		if (InFileIsFixedFormat) {
-			if (m_var[i].bPos < 0) {
-				*ErrorCode = VARIABLENOTSET;
-				return false;
-			}
-		}
-		else {
-			if (!m_var[i].PositionSet) {
-				*ErrorCode = VARIABLENOTSET;
-				return false;
-			}
-		}
+            }
 	}
-
-	FILE *fd = fopen(FileName, "r");
-	if (fd == 0) {
-		*ErrorCode = FILENOTFOUND;
+	else {
+            if (!m_var[i].PositionSet) {
+                *ErrorCode = VARIABLENOTSET;
 		return false;
+            }
 	}
+    }
 
-	fseek(fd, 0, SEEK_END);
-	m_fSize = ftell(fd);
-	rewind(fd);
+    FILE *fd = fopen(FileName, "r");
+    if (fd == 0) {
+        *ErrorCode = FILENOTFOUND;
+	return false;
+    }
 
+    fseek(fd, 0, SEEK_END);
+    m_fSize = ftell(fd);
+    rewind(fd);
 
-	// read first record to determine the fixed recordlength
-	str[0] = 0;
-	fgets((char *)str, MAXRECORDLENGTH, fd);
-	if (str[0] == 0) {
-		*ErrorCode = EMPTYFILE;
-		goto error;
-	}
+    // read first record to determine the fixed recordlength
+    str[0] = 0;
+    fgets((char *)str, MAXRECORDLENGTH, fd);
+    if (str[0] == 0) {
+        *ErrorCode = EMPTYFILE;
+	goto error;
+    }
 
-	length = strlen((char *)str) - 1;
-	while (length > 0 && str[length] < ' ') length--;
-	m_fixedlength = length + 1;
-	if (length == 0) {
-		*ErrorCode = EMPTYFILE; // first record empty
-		goto error;
-	}
+    length = strlen((char *)str) - 1;
+    while (length > 0 && str[length] < ' ') length--;
+    m_fixedlength = length + 1;
+    if (length == 0) {
+        *ErrorCode = EMPTYFILE; // first record empty
+	goto error;
+    }
 
-	if (!InFileIsFixedFormat) {
-		m_maxBPos = -1;
-		for (i = 0; i < m_nvar; i++) {
-			if (m_var[i].bPos > m_maxBPos) {
-				m_maxBPos = m_var[i].bPos;            
-			}
-		}
-   }
-
-	// record length oke? hierachie oke?
+    if (!InFileIsFixedFormat) {
+        m_maxBPos = -1;
 	for (i = 0; i < m_nvar; i++) {
-		if (InFileIsFixedFormat) {
-			if (m_var[i].bPos + m_var[i].nPos > m_fixedlength) {
-				*ErrorCode = RECORDTOOSHORT;
-				goto error;
-			}
-		}
+            if (m_var[i].bPos > m_maxBPos) {
+                m_maxBPos = m_var[i].bPos;            
+            }
+	}
+    }
 
-		if (m_var[i].IsHierarchical) {
-			if (m_var[i].nDigitSplit == 0 && m_var[i].hLevel.size() == 0) {
-				*ErrorCode = WRONGHIERARCHY;
-				goto error;
-			}
-		}
-
-		// initialize Min and Max Value for Numerics
-		if (m_var[i].IsNumeric) {
-			m_var[i].MaxValue = -DBL_MAX;
-			m_var[i].MinValue = DBL_MAX;
-		}
+    // record length oke? hierachie oke?
+    for (i = 0; i < m_nvar; i++) {
+        if (InFileIsFixedFormat) {
+            if (m_var[i].bPos + m_var[i].nPos > m_fixedlength) {
+                *ErrorCode = RECORDTOOSHORT;
+		goto error;
+            }
 	}
 
-	// read micro data to make codelists for categorical variables
-	rewind(fd);
-	while (!feof(fd) ) {
-		int res, varindex;
-		res = ReadMicroRecord(fd, str);
-		switch (res) {
-			case -1: // error
-				recnr++;
-				*ErrorCode = WRONGLENGTH;
-				*LineNumber = recnr;
-				goto error;
-			case  0: // eof
-				goto oke;
-			case  1: // oke
-				recnr++;
-				if (recnr % FIREPROGRESS == 0) {
-					FireUpdateProgress((int)(ftell(fd) * 100.0 / m_fSize));  // for progressbar in container
-				}
-				// Here is where the code lists are built
-				if (Result = DoMicroRecord(str, &varindex), Result >= 1000) { // error?
-					*ErrorCode = Result;
-					*LineNumber = recnr;
-					*ErrorVarIndex = varindex;
-					goto error;
-				}
-				break;
-		}
+	if (m_var[i].IsHierarchical) {
+            if (m_var[i].nDigitSplit == 0 && m_var[i].hLevel.size() == 0) {
+                *ErrorCode = WRONGHIERARCHY;
+		goto error;
+            }
 	}
 
-	oke:
-	fclose(fd);
-	m_nRecFile = recnr;
-	FireUpdateProgress(100);  // for progressbar in container
+	// initialize Min and Max Value for Numerics
+	if (m_var[i].IsNumeric) {
+            m_var[i].MaxValue = -DBL_MAX;
+            m_var[i].MinValue = DBL_MAX;
+	}
+    }
 
-	// add hierarchy, Missing1 and -2
-	for (i = 0; i < m_nvar; i++) {
-		// add hierarchy for split levels
-		if (m_var[i].nDigitSplit > 0) {
-			if (!m_var[i].ComputeHierarchicalCodes() ) {
-				*ErrorCode = WRONGHIERARCHY;
-				*LineNumber = -1;
-				return false;
-			}
+    // read micro data to make codelists for categorical variables
+    rewind(fd);
+    while (!feof(fd) ) {
+        int res, varindex;
+	res = ReadMicroRecord(fd, str);
+	switch (res) {
+            case -1: // error
+                recnr++;
+		*ErrorCode = WRONGLENGTH;
+		*LineNumber = recnr;
+		goto error;
+            case  0: // eof
+                goto oke;
+            case  1: // oke
+                recnr++;
+		if (recnr % FIREPROGRESS == 0) {
+                    FireUpdateProgress((int)(ftell(fd) * 100.0 / m_fSize));  // for progressbar in container
 		}
+		// Here is where the code lists are built
+		if (Result = DoMicroRecord(str, &varindex), Result >= 1000) { // error?
+                    *ErrorCode = Result;
+                    *LineNumber = recnr;
+                    *ErrorVarIndex = varindex;
+                    goto error;
+		}
+		break;
+	}
+    }
 
-		// add total
-		if (!m_var[i].IsHierarchical || m_var[i].nDigitSplit > 0) {
-			m_var[i].AddCode("", false);
-		}
+oke:
+    fclose(fd);
+    m_nRecFile = recnr;
+    FireUpdateProgress(100);  // for progressbar in container
 
-		// add Missing1 and -2
-		if (m_var[i].IsCategorical) {
-			if (m_var[i].nMissing != 0)	{
-				m_var[i].AddCode(m_var[i].Missing1.c_str(), true);
-				if (m_var[i].IsHierarchical && m_var[i].nDigitSplit == 0) {
-					m_var[i].hLevel.push_back(1);
-					m_var[i].hLevelBasic.push_back(true);
-				}
-				if (m_var[i].nMissing == 2) {
-					m_var[i].AddCode(m_var[i].Missing2.c_str(), true);
-					if (m_var[i].IsHierarchical && m_var[i].nDigitSplit == 0) {
-						m_var[i].hLevel.push_back(1);
-						m_var[i].hLevelBasic.push_back(true);
-					}
-				}
-			}
-		}
-
-		m_var[i].nCode = m_var[i].sCode.size();
-		// allocate and initialize memory
-		if (m_var[i].IsHierarchical) {
-			if (!m_var[i].SetHierarch() ) {
-				*ErrorCode = WRONGHIERARCHY;
-				*LineNumber = -1;
-				return false;
-			}
-		}
+    // add hierarchy, Missing1 and -2
+    for (i = 0; i < m_nvar; i++) {
+        // add hierarchy for split levels
+	if (m_var[i].nDigitSplit > 0) {
+            if (!m_var[i].ComputeHierarchicalCodes() ) {
+                *ErrorCode = WRONGHIERARCHY;
+		*LineNumber = -1;
+		return false;
+            }
 	}
 
-	strcpy(m_fname, FileName);  // Save name for use in ComputeTables
-	m_CompletedCodeList = true;
-	// ShowCodeLists();  // in output pane
+	// add total
+	if (!m_var[i].IsHierarchical || m_var[i].nDigitSplit > 0) {
+            m_var[i].AddCode("", false);
+	}
 
-	return true;
+	// add Missing1 and -2
+	if (m_var[i].IsCategorical) {
+            if (m_var[i].nMissing != 0)	{
+                m_var[i].AddCode(m_var[i].Missing1.c_str(), true);
+		if (m_var[i].IsHierarchical && m_var[i].nDigitSplit == 0) {
+                    m_var[i].hLevel.push_back(1);
+                    m_var[i].hLevelBasic.push_back(true);
+		}
+		if (m_var[i].nMissing == 2) {
+                    m_var[i].AddCode(m_var[i].Missing2.c_str(), true);
+                    if (m_var[i].IsHierarchical && m_var[i].nDigitSplit == 0) {
+                        m_var[i].hLevel.push_back(1);
+			m_var[i].hLevelBasic.push_back(true);
+                    }
+		}
+            }
+	}
+
+	m_var[i].nCode = m_var[i].sCode.size();
+	// allocate and initialize memory
+	if (m_var[i].IsHierarchical) {
+            if (!m_var[i].SetHierarch() ) {
+                *ErrorCode = WRONGHIERARCHY;
+		*LineNumber = -1;
+		return false;
+            }
+	}
+    }
+
+    strcpy(m_fname, FileName);  // Save name for use in ComputeTables
+    m_CompletedCodeList = true;
+    // ShowCodeLists();  // in output pane
+
+    return true;
 
 error:
-	fclose(fd);
+    fclose(fd);
 
-	return false;
+    return false;
 }
 
+// ??? Never used in this dll nor in the GUI ???
 // get maximum unsafe Combination
-long TauArgus::GetMaxnUc()
+/*long TauArgus::GetMaxnUc()
 {
-	if (m_nvar == 0  ||  m_ntab  == 0  || !m_CompletedCodeList)  {
-		return -1;
-	}
+    if (m_nvar == 0  ||  m_ntab  == 0  || !m_CompletedCodeList)  {
+        return -1;
+    }
 
-	int max = 0;
-	for (int t = 0; t < m_ntab; t++) {
-		CTable *tab;
-		tab = GetTable(t);
-		for (int c = 0; c < tab->nCell; c++) {
-			long tempstatus = tab->GetCell(c)->GetStatus();
-			if ((tempstatus == CS_UNSAFE_FREQ) || (tempstatus == CS_UNSAFE_PEEP) ||
-				( tempstatus == CS_UNSAFE_RULE) || (tempstatus == CS_UNSAFE_SINGLETON) ||
-				(tempstatus == CS_UNSAFE_ZERO)) max++;
-		}
-	}
+    int max = 0;
+    for (int t = 0; t < m_ntab; t++) {
+	CTable *tab;
+	tab = GetTable(t);
+	for (int c = 0; c < tab->nCell; c++) {
+            long tempstatus = tab->GetCell(c)->GetStatus();
+            if ((tempstatus == CS_UNSAFE_FREQ) || (tempstatus == CS_UNSAFE_PEEP) ||
+                 (tempstatus == CS_UNSAFE_RULE) || (tempstatus == CS_UNSAFE_SINGLETON) ||
+		  (tempstatus == CS_UNSAFE_ZERO)) max++;
+        }
+    }
 
-	return max;
-}
+    return max;
+}*/
 
 // Undo recode. Undo recodes for a variable. This is used when a table is
 // created to be recoded
 bool TauArgus::UndoRecode(long VarIndex)
 {
-	/*if (m_nvar == 0 || m_ntab == 0 || m_fname[0] == 0) {
-    return false;
-	}*/
+    /*if (m_nvar == 0 || m_ntab == 0 || m_fname[0] == 0) {
+        return false;
+    }*/
 
-	if (m_nvar == 0  || m_ntab == 0  || !m_CompletedCodeList)  {
-		return false;
-	}
+    if (m_nvar == 0  || m_ntab == 0  || !m_CompletedCodeList)  {
+        return false;
+    }
 
-	// wrong VarIndex
-	if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsCategorical) {
-		return false;
-	}
+    // wrong VarIndex
+    if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsCategorical) {
+        return false;
+    }
 
-	m_var[VarIndex].UndoRecode();
+    m_var[VarIndex].UndoRecode();
 
-	// recomputes for all tables the flag HasRecode
-	SetTableHasRecode();
+    // recomputes for all tables the flag HasRecode
+    SetTableHasRecode();
 
-	return true;
+    return true;
 }
 
 
 //Sets the status of a cell to a given status
 bool TauArgus::SetTableCellStatus(long TableIndex, long *DimIndex, long CelStatus)
 {
+    // redo protection levels
+    int iOriginalStatus;
+    CDataCell *dc;
 
-	// redo protection levels
-   int iOriginalStatus;
-	CDataCell *dc;
+    // check parameters
+    if (TableIndex < 0 || TableIndex >= m_ntab) {
+        return false;
+    }
+    //if (m_fname[0] == 0)      		return false;
+    if (!m_CompletedCodeList) {
+        return false;
+    }
 
-	// check parameters
-   if (TableIndex < 0 || TableIndex >= m_ntab) {
-		return false;
+    // check CellStatus; status EMPTY cannot be set
+    // Note empty can be set. empty means freq is nul
+    if (CelStatus < CS_SAFE || CelStatus >= CS_EMPTY) {
+        return false;
+    }
+
+    CTable *table = GetTable(TableIndex);
+    //dc = table ->GetCell(DimIndex);
+    //iTemporaryStatus = table->ComputeCellSafeCode(*dc);
+
+    // check DimIndices
+    for (int i = 0; i < table->nDim; i++) {
+        int nCodes = m_var[table->ExplVarnr[i]].GetnCode();
+	ASSERT(DimIndex[i] >= 0 && DimIndex[i] < nCodes);
+	if (DimIndex[i] < 0 || DimIndex[i] >= nCodes)  {
+            return false;
 	}
-	//if (m_fname[0] == 0)      		return false;
-   if (!m_CompletedCodeList) {
-		return false;
+    }
+
+    // set CellStatus
+    // if manual unsafe or manual safe then check rules.
+    // So that you set the status to the original status.
+    // Manual unsafe is set as unsafe if the cel was already unsafe
+    //	Manual safe is set as safe if the cel was already safe
+    dc = table ->GetCell(DimIndex);
+    iOriginalStatus = table->ComputeCellSafeCode(*dc);
+    if (CelStatus == CS_UNSAFE_MANUAL){
+        dc = table ->GetCell(DimIndex);
+	iOriginalStatus = table->ComputeCellSafeCode(*dc);
+	if(! ((iOriginalStatus == CS_UNSAFE_FREQ) || (iOriginalStatus == CS_UNSAFE_PEEP) ||
+               (iOriginalStatus == CS_UNSAFE_RULE) || (iOriginalStatus == CS_UNSAFE_SINGLETON) ||
+		(iOriginalStatus == CS_UNSAFE_ZERO))){
+            dc->SetStatus(CelStatus);
+            // redo protectionlevel
+            table->SetProtectionLevelCell(*dc);
 	}
-
-	// check CellStatus; status EMPTY cannot be set
-	// Note empty can be set. empty means freq is nul
-   if (CelStatus < CS_SAFE || CelStatus >= CS_EMPTY) {
-		return false;
+	else{
+            dc->SetStatus(iOriginalStatus);
+            table->SetProtectionLevelCell(*dc);
 	}
-
-	CTable *table = GetTable(TableIndex);
-	//dc = table ->GetCell(DimIndex);
-	//iTemporaryStatus = table->ComputeCellSafeCode(*dc);
-
-	// check DimIndices
-	for (int i = 0; i < table->nDim; i++) {
-		int nCodes = m_var[table->ExplVarnr[i]].GetnCode();
-		ASSERT(DimIndex[i] >= 0 && DimIndex[i] < nCodes);
-		if (DimIndex[i] < 0 || DimIndex[i] >= nCodes)  {
-			return false;
-		}
+    }
+    else if (CelStatus == CS_SAFE_MANUAL){
+        dc = table ->GetCell(DimIndex);
+        iOriginalStatus = table->ComputeCellSafeCode(*dc);
+        if (!(iOriginalStatus == CS_SAFE)){
+            dc ->SetStatus(CelStatus);
+            table->SetProtectionLevelCell(*dc);
+        }
+	else{
+            dc	-> SetStatus(iOriginalStatus);
+            table->SetProtectionLevelCell(*dc);
 	}
-
-	// set CellStatus
-	// if manual unsafe or manual safe then check rules.
-	// So that you set the status to the original status.
-	// Manual unsafe is set as unsafe if the cel was already unsafe
-	//	Manual safe is set as safe if the cel was already safe
-		dc = table ->GetCell(DimIndex);
-		iOriginalStatus = table->ComputeCellSafeCode(*dc);
-	if (CelStatus == CS_UNSAFE_MANUAL)	{
-		dc = table ->GetCell(DimIndex);
-		iOriginalStatus = table->ComputeCellSafeCode(*dc);
-		if(! ((iOriginalStatus == CS_UNSAFE_FREQ) || (iOriginalStatus == CS_UNSAFE_PEEP) ||
-			(iOriginalStatus == CS_UNSAFE_RULE) || (iOriginalStatus == CS_UNSAFE_SINGLETON) ||
-			(iOriginalStatus == CS_UNSAFE_ZERO)))	{
-			dc->SetStatus(CelStatus);
-			// redo protectionlevel
-			table->SetProtectionLevelCell(*dc);
-		}
-		else	{
-			dc->SetStatus(iOriginalStatus);
-			table->SetProtectionLevelCell(*dc);
-		}
-
-   }
-	else if (CelStatus == CS_SAFE_MANUAL)	{
-		dc = table ->GetCell(DimIndex);
-      iOriginalStatus = table->ComputeCellSafeCode(*dc);
-      if (!(iOriginalStatus == CS_SAFE))	{
-			dc ->SetStatus(CelStatus);
-			table->SetProtectionLevelCell(*dc);
-      }
-		else	{
-			dc	-> SetStatus(iOriginalStatus);
-			table->SetProtectionLevelCell(*dc);
-		}
-   }
-	else if (CelStatus == CS_EMPTY_NONSTRUCTURAL)	{
-		dc = table ->GetCell(DimIndex);
-      iOriginalStatus = table->ComputeCellSafeCode(*dc);
-		if (iOriginalStatus == CS_EMPTY)	{
-			table->GetCell(DimIndex)->SetStatus(CelStatus);
-			table->SetProtectionLevelCell(*dc);
-		}
+    }
+    else if (CelStatus == CS_EMPTY_NONSTRUCTURAL){
+        dc = table ->GetCell(DimIndex);
+        iOriginalStatus = table->ComputeCellSafeCode(*dc);
+	if (iOriginalStatus == CS_EMPTY){
+            table->GetCell(DimIndex)->SetStatus(CelStatus);
+            table->SetProtectionLevelCell(*dc);
 	}
-   else
-   {
-      table->GetCell(DimIndex)->SetStatus(CelStatus);
-   }
+    }
+    else{
+        table->GetCell(DimIndex)->SetStatus(CelStatus);
+    }
 
-	return true;
+    return true;
 }
 
 // Set the cost function for a cell
 bool TauArgus::SetTableCellCost(long TableIndex, long *DimIndex, double Cost)
 {
+    // check parameters
+    if (TableIndex < 0 || TableIndex >= m_ntab) {
+        return false;
+    }
+    //if (m_fname[0] == 0)      		return false;
+    if (!m_CompletedCodeList) {
+        return false;
+    }
 
-	// check parameters
-   if (TableIndex < 0 || TableIndex >= m_ntab) {
-		return false;
-	}
-	//if (m_fname[0] == 0)      		return false;
-   if (!m_CompletedCodeList) {
-		return false;
-	}
+    CTable *table = GetTable(TableIndex);
+    //dc = table ->GetCell(DimIndex);
+    //iTemporaryStatus = table->ComputeCellSafeCode(*dc);
 
-	CTable *table = GetTable(TableIndex);
-	//dc = table ->GetCell(DimIndex);
-	//iTemporaryStatus = table->ComputeCellSafeCode(*dc);
-
-	// check DimIndices
-	for (int i = 0; i < table->nDim; i++) {
-		int nCodes = m_var[table->ExplVarnr[i]].GetnCode();
-		ASSERT(DimIndex[i] >= 0 && DimIndex[i] < nCodes);
-		if (DimIndex[i] < 0 || DimIndex[i] >= nCodes)  {
-			return false;
-		}
+    // check DimIndices
+    for (int i = 0; i < table->nDim; i++) {
+        int nCodes = m_var[table->ExplVarnr[i]].GetnCode();
+	ASSERT(DimIndex[i] >= 0 && DimIndex[i] < nCodes);
+	if (DimIndex[i] < 0 || DimIndex[i] >= nCodes)  {
+            return false;
 	}
-	CDataCell *dc = table ->GetCell(DimIndex);
-	dc->SetCost(Cost);
-	return true;
+    }
+    CDataCell *dc = table ->GetCell(DimIndex);
+    dc->SetCost(Cost);
+    return true;
 }
 
 // Get Status and Cost per dimensie
 bool TauArgus::GetStatusAndCostPerDim(long TableIndex, long *Status, double *Cost)
 {
-	if (TableIndex < 0 || TableIndex >= m_ntab) {
-		return false;
-	}
+    if (TableIndex < 0 || TableIndex >= m_ntab) {
+        return false;
+    }
 
-	CTable *tab = GetTable(TableIndex);
-	tab->GetStatusAndCostPerDim(Status, Cost);
-	return true;
+    CTable *tab = GetTable(TableIndex);
+    tab->GetStatusAndCostPerDim(Status, Cost);
+    return true;
 }
 
 // Set a Variable code as Active, This is important for
@@ -1113,64 +1086,62 @@ bool TauArgus::GetStatusAndCostPerDim(long TableIndex, long *Status, double *Cos
 // and will be used in recoding
 bool TauArgus::SetVarCodeActive(long VarIndex, long CodeIndex, bool Active)
 {
-	int v = VarIndex, c = CodeIndex;
+    int v = VarIndex, c = CodeIndex;
 
-	if (v < 0 || v >= m_nvar) {
-		return false;
-	}
-	if (!m_var[v].IsHierarchical) {
-		return false;
-	}
-	if (c < 0 || c >= m_var[v].nCode - m_var[v].nMissing)	{
-		return false;
-	}
-	if (!m_var[v].hCode[c].IsParent)  {
-		return false;
-	}
+    if (v < 0 || v >= m_nvar) {
+        return false;
+    }
+    if (!m_var[v].IsHierarchical) {
+        return false;
+    }
+    if (c < 0 || c >= m_var[v].nCode - m_var[v].nMissing){
+        return false;
+    }
+    if (!m_var[v].hCode[c].IsParent)  {
+        return false;
+    }
 
-	m_var[v].SetActive(c, Active);
+    m_var[v].SetActive(c, Active);
 
-	return true;
+    return true;
 }
 
 // Get the number of codes for the given variable
-bool TauArgus::GetVarNumberOfCodes(long VarIndex, long *NumberOfCodes,
-															long *NumberOfActiveCodes)
+bool TauArgus::GetVarNumberOfCodes(long VarIndex, long *NumberOfCodes, long *NumberOfActiveCodes)
 {
-	if (VarIndex < 0 || VarIndex >= m_nvar) {
-		return false;
-	}
+    if (VarIndex < 0 || VarIndex >= m_nvar) {
+    	return false;
+    }
 
-	*NumberOfCodes = m_var[VarIndex].GetnCode();
-	*NumberOfActiveCodes = m_var[VarIndex].GetnCodeActive();
+    *NumberOfCodes = m_var[VarIndex].GetnCode();
+    *NumberOfActiveCodes = m_var[VarIndex].GetnCodeActive();
 
-	return true;
+    return true;
 }
 
 // Do recode for all active codes
 bool TauArgus::DoActiveRecode(long VarIndex)
-
 {
-	// too early?
- /* if (m_nvar == 0 || m_ntab == 0 || m_fname[0] == 0) {
-    return false;
-  }*/
+    // too early?
+    /* if (m_nvar == 0 || m_ntab == 0 || m_fname[0] == 0) {
+        return false;
+      }*/
 
-	if  (m_nvar == 0 || m_ntab == 0 || !m_CompletedCodeList)  {
-		return false;
-	}
+    if  (m_nvar == 0 || m_ntab == 0 || !m_CompletedCodeList)  {
+        return false;
+    }
 
-  // wrong VarIndex, not hierarchical
-	if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsCategorical || !m_var[VarIndex].IsHierarchical) {
-		return false;
-	}
+    // wrong VarIndex, not hierarchical
+    if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsCategorical || !m_var[VarIndex].IsHierarchical) {
+        return false;
+    }
 
-	// nothing to do?
-	if (m_var[VarIndex].hCode == 0 || m_var[VarIndex].GetnCodeInActive() == 0) {
-		return false;
-	}
+    // nothing to do?
+    if (m_var[VarIndex].hCode == 0 || m_var[VarIndex].GetnCodeInActive() == 0) {
+        return false;
+    }
 
-	return m_var[VarIndex].SetHierarchicalRecode();;
+    return m_var[VarIndex].SetHierarchicalRecode();;
 }
 
 // Set Variable. All information to set in the variable object is given
@@ -1184,72 +1155,72 @@ bool TauArgus::SetVariable(long VarIndex, long bPos,
 				bool IsHolding,
                                 bool IsRecordKey)
 {
-	// index oke?
-	if (VarIndex < 0 || VarIndex >= m_nvar+1) {
-		return false;
-	}
+    // index oke?
+    if (VarIndex < 0 || VarIndex >= m_nvar+1) {
+        return false;
+    }
         
-	// holding?
-	if (IsHolding) {
-		if (m_VarNrHolding >= 0)	{
-			return false;  // holding variable already given
-		}
-		if (IsCategorical || IsNumeric || IsWeight || IsHierarchical) {
-			return false;
-		}
-		m_VarNrHolding = VarIndex;
+    // holding?
+    if (IsHolding) {
+        if (m_VarNrHolding >= 0)	{
+            return false;  // holding variable already given
 	}
-
-	// weight?
-	if (IsWeight) {
-		if (!IsNumeric)	{
-			return false;
-		}
-		if (m_VarNrWeight >= 0) {
-			return false;
-		}// weight variable already given
-		if (IsCategorical || IsHierarchical)	{
-			return false;
-		}
-		m_VarNrWeight = VarIndex;
+	if (IsCategorical || IsNumeric || IsWeight || IsHierarchical) {
+            return false;
 	}
+	m_VarNrHolding = VarIndex;
+    }
 
-	// Categorical variables should have at least one Missing
+    // weight?
+    if (IsWeight) {
+	if (!IsNumeric)	{
+            return false;
+	}
+	if (m_VarNrWeight >= 0) {
+            return false;
+	}// weight variable already given
+	if (IsCategorical || IsHierarchical)	{
+            return false;
+	}
+        m_VarNrWeight = VarIndex;
+    }
+
+    // Categorical variables should have at least one Missing
 /*	if (IsCategorical && Missing1[0] == 0 && Missing2[0] == 0)	{
 		return false;
 	}*/
         
 	// save properties
-	if (!m_var[VarIndex].SetPosition(bPos, nPos, nDec) )	{
-		return false;
-	}
-	if (!m_var[VarIndex].SetType(IsCategorical, IsNumeric, IsWeight, IsHierarchical,
-	  IsHolding, IsPeeper, IsRecordKey) ) {
-		return false;
-	}
-	if (nMissing < 0 || nMissing > 2) {
-		return false;
-	}
-	if (!m_var[VarIndex].SetMissing(Missing1, Missing2, nMissing) )	{
-		return false;
-	}
-	if (!m_var[VarIndex].SetTotalCode(TotalCode) ) {
-		return false;
-	}
-	if (!m_var[VarIndex].SetPeepCodes(PeeperCode1, PeeperCode2)) {
-		return false;
-	}
+    if (!m_var[VarIndex].SetPosition(bPos, nPos, nDec) )	{
+        return false;
+    }
+    if (!m_var[VarIndex].SetType(IsCategorical, IsNumeric, IsWeight, IsHierarchical, IsHolding, IsPeeper, IsRecordKey) ) {
+        return false;
+    }
+    if (nMissing < 0 || nMissing > 2) {
+        return false;
+    }
+    if (!m_var[VarIndex].SetMissing(Missing1, Missing2, nMissing) )	{
+        return false;
+    }
+    if (!m_var[VarIndex].SetTotalCode(TotalCode) ) {
+        return false;
+    }
+    if (!m_var[VarIndex].SetPeepCodes(PeeperCode1, PeeperCode2)) {
+	return false;
+    }
         
-        if (IsRecordKey){
-		if (m_VarNrRecordKey >= 0) {
-			return false;
-		}// recordkey variable already given
-		if (IsCategorical || IsWeight || IsHierarchical || IsHolding) {
-			return false;
-		}
-                m_VarNrRecordKey = VarIndex;
-        }
-	return true;
+    if (IsRecordKey){
+        if (m_VarNrRecordKey >= 0) {
+            return false;
+	}// recordkey variable already given
+	if (IsCategorical || IsWeight || IsHierarchical || IsHolding) {
+            return false;
+	}
+        m_VarNrRecordKey = VarIndex;
+    }
+    
+    return true;
 }
 
 // Sets all the information for the Table object this together with
@@ -1257,321 +1228,326 @@ bool TauArgus::SetVariable(long VarIndex, long bPos,
 bool TauArgus::SetTable(long Index, long nDim, long *ExplanatoryVarList,
                         bool IsFrequencyTable,
 			long ResponseVar, long ShadowVar, long CostVar, long CellKeyVar,
+                        std::string CKMType, 
+                        long CKMTopK,
 			double Lambda,
 			double MaxScaledCost,
 			long PeepVarnr,
 			bool SetMissingAsSafe)
 {
-	int i = Index, j;
-	long nd;
+    int i = Index, j;
+    long nd;
 
-	// check TableIndex
-	if (m_nvar == 0 || i < 0 || i >= m_ntab) {
+    // check TableIndex
+    if (m_nvar == 0 || i < 0 || i >= m_ntab) {
+	return false;
+    }
+
+    // check number of dimensions
+    if (nDim < 1 || nDim > MAXDIM) {
+	return false;
+    }
+
+    if (!IsFrequencyTable){
+        if (ResponseVar < 0 || ResponseVar >= m_nvar || !m_var[ResponseVar].IsNumeric) {
+            return false;
+	}
+	nd = - m_var[ResponseVar].nDec;
+	m_tab[i].MinLPL = pow(10.0, nd);
+
+	if (ShadowVar < 0 || ShadowVar >= m_nvar || !m_var[ShadowVar].IsNumeric) {
+            return false;
+	}
+
+	// -1 : Count every record for 1 (= Freq)
+	// -2 : Eacht table cell, incl. (sub)totals, fixed value 1
+        // -3 : distance function to be used
+	if (CostVar != -1 && CostVar != -2 && CostVar != -3) {
+            if (CostVar < 0 || CostVar >= m_nvar || !m_var[CostVar].IsNumeric) {
+                return false;
+            }
+	}
+    }
+    else{
+        m_tab[i].IsFrequencyTable = true;
+	ResponseVar = m_nvar;
+    }
+
+    // ExploreFile done?
+    /*if (m_UsingMicroData)  {
+	if (m_fname[0] == 0) {
 		return false;
 	}
+    }*/
 
-	// check number of dimensions
-	if (nDim < 1 || nDim > MAXDIM) {
-		return false;
+    // Check if explore file is done
+    if (!m_CompletedCodeList)	{
+        return false;
+    }
+
+    // check variable indices, variable should be categorical
+    for (j = 0; j < nDim; j++) {
+	int d = ExplanatoryVarList[j]; // index of variable, 1 .. m_nvar is oke
+	if (d < 0 || d >= m_nvar) {
+            return false;
 	}
-
-	if (!IsFrequencyTable)	{
-		if (ResponseVar < 0 || ResponseVar >= m_nvar || !m_var[ResponseVar].IsNumeric) {
-			return false;
-		}
-		nd = - m_var[ResponseVar].nDec;
-		m_tab[i].MinLPL = pow(10.0, nd);
-
-		if (ShadowVar < 0 || ShadowVar >= m_nvar || !m_var[ShadowVar].IsNumeric) {
-			return false;
-		}
-
-		// -1 : Count every record for 1 (= Freq)
-		// -2 : Eacht table cell, incl. (sub)totals, fixed value 1
-		if (CostVar != -1 && CostVar != -2 && CostVar != -3) {
-			if (CostVar < 0 || CostVar >= m_nvar || !m_var[CostVar].IsNumeric) {
-				return false;
-			}
-		}
+	if (!m_var[d].IsCategorical) { // property set in SetVariable(...)
+            return false;
 	}
-	else	{
-		m_tab[i].IsFrequencyTable = true;
-		ResponseVar = m_nvar;
-	}
+    }
 
-  // ExploreFile done?
-	/*if (m_UsingMicroData)  {
-		if (m_fname[0] == 0) {
-			return false;
-		}
-	}*/
+    // set MissingAsSafe
+    if(SetMissingAsSafe)	{
+        m_tab[i].SetMissingAsSafe = true;
+    }
+    else{
+	m_tab[i].SetMissingAsSafe = false;
+    }
 
-	// Check if explore file is done
-	if (!m_CompletedCodeList)	{
-		return false;
-	}
+    // set Lambda
+    if (Lambda<0 || Lambda >1) {
+        return false;
+    }
+    m_tab[i].Lambda = Lambda;
+    if (MaxScaledCost <1){
+        return false;
+    }
+    m_tab[i].MaxScaledCost = MaxScaledCost;
+    // set table variables
+    m_tab[i].SetVariables(nDim, ExplanatoryVarList, ResponseVar, ShadowVar, CostVar, CellKeyVar, PeepVarnr);
 
-
-	// check variable indices, variable should be categorical
-	for (j = 0; j < nDim; j++) {
-		int d = ExplanatoryVarList[j]; // index of variable, 1 .. m_nvar is oke
-		if (d < 0 || d >= m_nvar) {
-			return false;
-		}
-		if (!m_var[d].IsCategorical) { // property set in SetVariable(...)
-			return false;
-		}
-	}
-
-	// set MissingAsSafe
-	if(SetMissingAsSafe)	{
-		m_tab[i].SetMissingAsSafe = true;
-	}
-	else	{
-		m_tab[i].SetMissingAsSafe = false;
-	}
-
-	// set Lambda
-	if (Lambda<0 || Lambda >1) {
-		return false;
-	}
-	m_tab[i].Lambda = Lambda;
-	if (MaxScaledCost <1)	{
-		return false;
-	}
-	m_tab[i].MaxScaledCost = MaxScaledCost;
-	// set table variables
-        m_tab[i].SetVariables(nDim, ExplanatoryVarList, ResponseVar, ShadowVar, CostVar, CellKeyVar, PeepVarnr);
-
-	// add SizeDim to tab
-	for (int d = 0; d < nDim; d++) {
-		m_tab[i].SetDimSize(d, m_var[ExplanatoryVarList[d]].nCode);
-	}
-
-	return true;
+    // add SizeDim to tab
+    for (int d = 0; d < nDim; d++) {
+	m_tab[i].SetDimSize(d, m_var[ExplanatoryVarList[d]].nCode);
+    }
+    
+    // set CKM type and CKM topK
+    m_tab[i].CKMType = CKMType;
+    m_tab[i].CKMTopK = CKMTopK;
+    
+    return true;
 }
 
 
 bool TauArgus::GetTableCellValue(long TableIndex, long CellIndex, double *CellResponse)
 {	
-	if (!m_CompletedCodeList)  {
-		return false;
-	}
+    if (!m_CompletedCodeList)  {
+        return false;
+    }
 
-	CTable *table = GetTable(TableIndex);
+    CTable *table = GetTable(TableIndex);
 
-	CDataCell *dc = table->GetCell(CellIndex);
+    CDataCell *dc = table->GetCell(CellIndex);
 
-	*CellResponse = dc->GetResp();
+    *CellResponse = dc->GetResp();
 
-	return true;
+    return true;
 }
-
 
 // Returns the information in a cell.
 bool TauArgus::GetTableCell(long TableIndex, long *DimIndex, double *CellResponse, double *CellRoundedResp, double *CellCTAResp,
                                 double *CellCKMResp,
-                                double *CellShadow, double *CellCost, double *CellKey,
+                                double *CellShadow, double *CellCost, double *CellKey, double *CellKeyNoZeros,
 				long *CellFreq, long *CellStatus,
 				double *CellMaxScore,double *CellMAXScoreWeight,
 				long *HoldingFreq,
 				double *HoldingMaxScore, long *HoldingNrPerMaxScore,
-				double * PeepCell, double * PeepHolding, long * PeepSortCell, long * PeepSortHolding,
+				double *PeepCell, double *PeepHolding, long *PeepSortCell, long *PeepSortHolding,
 				double *Lower, double *Upper,
-				double *RealizedLower,double * RealizedUpper)
+				double *RealizedLower,double *RealizedUpper)
 {
-	int i;
+    int i;
 
-	// check parameters
-	if (TableIndex < 0 || TableIndex >= m_ntab) {
-		return false;
-	}
+    // check parameters
+    if (TableIndex < 0 || TableIndex >= m_ntab) {
+        return false;
+    }
 
-  /*if (m_UsingMicroData)  {
+    /*if (m_UsingMicroData)  {
 	if (m_fname[0] == 0) {
 			return false;
 		}
-  }
-  */
+    }*/
 
-	if (!m_CompletedCodeList)  {
-		return false;
+    if (!m_CompletedCodeList)  {
+    	return false;
+    }
+
+    CTable *table = GetTable(TableIndex);
+
+    // check DimIndices
+    for (i = 0; i < table->nDim; i++) {
+	int nCodes = m_var[table->ExplVarnr[i]].GetnCode();
+	ASSERT(DimIndex[i] >= 0 && DimIndex[i] < nCodes);
+	if (DimIndex[i] < 0 || DimIndex[i] >= nCodes) {
+            return false;
 	}
+    }
 
-	CTable *table = GetTable(TableIndex);
+    CDataCell *dc = table->GetCell(DimIndex);
 
-	// check DimIndices
-	for (i = 0; i < table->nDim; i++) {
-		int nCodes = m_var[table->ExplVarnr[i]].GetnCode();
-		ASSERT(DimIndex[i] >= 0 && DimIndex[i] < nCodes);
-		if (DimIndex[i] < 0 || DimIndex[i] >= nCodes) {
-			return false;
-		}
+    *CellResponse = dc->GetResp();
+    *CellRoundedResp = dc->GetRoundedResponse();
+    *CellCTAResp = dc->GetCTAValue();
+    *CellCKMResp = dc->GetCKMValue();
+    *CellShadow  = dc->GetShadow();
+    *CellCost    = dc->GetCost(table->Lambda);
+    *CellKey     = dc->GetCellKey();
+    *CellKeyNoZeros = dc->GetCellKeyNoZeros();
+    *CellFreq    = dc->GetFreq();
+    *CellStatus  = dc->GetStatus();
+    *RealizedUpper = dc->GetRealizedUpperValue();
+    *RealizedLower = dc->GetRealizedLowerValue();
+    *Lower = dc->GetLowerProtectionLevel();
+    *Upper = dc->GetUpperProtectionLevel();
+    *HoldingFreq = dc->GetFreqHolding();
+    *PeepCell = dc->GetPeepCell();
+    *PeepHolding = dc->GetPeepHolding();
+    *PeepSortCell = dc->GetPeepSortCell();
+    *PeepSortHolding = dc->GetPeepSortHolding();
+
+    for (i = 0; i < dc->nMaxScoreCell && i < *CellFreq; i++) {
+        CellMaxScore[i] = dc->MaxScoreCell[i];
+	if (table->ApplyWeight)	{
+            CellMAXScoreWeight[i] = dc->MaxScoreWeightCell[i];
 	}
-
-	CDataCell *dc = table->GetCell(DimIndex);
-
-	*CellResponse = dc->GetResp();
-	*CellRoundedResp = dc->GetRoundedResponse();
-	*CellCTAResp = dc->GetCTAValue();
-        *CellCKMResp = dc->GetCKMValue();
-	*CellShadow  = dc->GetShadow();
-	*CellCost    = dc->GetCost(table->Lambda);
-        *CellKey     = dc->GetCellKey();
-	*CellFreq    = dc->GetFreq();
-	*CellStatus  = dc->GetStatus();
-	*RealizedUpper = dc->GetRealizedUpperValue();
-	*RealizedLower = dc->GetRealizedLowerValue();
-	*Lower = dc->GetLowerProtectionLevel();
-	*Upper = dc->GetUpperProtectionLevel();
-	*HoldingFreq = dc->GetFreqHolding();
-	*PeepCell = dc->GetPeepCell();
-	*PeepHolding = dc->GetPeepHolding();
-	*PeepSortCell = dc->GetPeepSortCell();
-	*PeepSortHolding = dc->GetPeepSortHolding();
-
-	for (i = 0; i < dc->nMaxScoreCell && i < *CellFreq; i++) {
-		CellMaxScore[i] = dc->MaxScoreCell[i];
-		if (table->ApplyWeight)	{
-			CellMAXScoreWeight[i] = dc->MaxScoreWeightCell[i];
-		}
+    }
+    for (; i < dc->nMaxScoreCell; i++) {
+        CellMaxScore[i] = 0;
+	if (table->ApplyWeight)	{
+            CellMAXScoreWeight[i] = 0;
 	}
-	for (; i < dc->nMaxScoreCell; i++) {
-		CellMaxScore[i] = 0;
-		if (table->ApplyWeight)	{
-			CellMAXScoreWeight[i] = 0;
-		}
+    }
+    if ((table->ApplyHolding) && (dc->nMaxScoreHolding >0))	{
+	for (i= 0; i < dc->nMaxScoreHolding; i++)	{
+            HoldingMaxScore[i] = dc->MaxScoreHolding[i];
+            HoldingNrPerMaxScore[i] = dc->HoldingnrPerMaxScore[i];
 	}
-	if ((table->ApplyHolding) && (dc->nMaxScoreHolding >0))	{
-		for (i= 0; i < dc->nMaxScoreHolding; i++)	{
-			HoldingMaxScore[i] = dc->MaxScoreHolding[i];
-			HoldingNrPerMaxScore[i] = dc->HoldingnrPerMaxScore[i];
-		}
-	}
+    }
 
-	return true;
+    return true;
 }
 
 // Set information necessary to build a tableobject. This functions works together with SetTable.
-bool TauArgus::SetTableSafety( long Index, bool DominanceRule,
-														long * DominanceNumber,
-														long * DominancePerc,
-														bool PQRule,
-														long * PriorPosteriorP,
-														long * PriorPosteriorQ,
-														long * PriorPosteriorN,
-														long * SafeMinRecAndHoldings,
-														long * PeepPerc,
-														long * PeepSafetyRange,
-														long * PeepMinFreqCellAndHolding,
-														bool ApplyPeep,
-														bool ApplyWeight, bool ApplyWeightOnSafetyRule,
-														bool ApplyHolding,bool ApplyZeroRule,
-														bool EmptyCellAsNonStructural, long NSEmptySafetyRange,
-														double ZeroSafetyRange,	long ManualSafetyPerc,
-														long * CellAndHoldingFreqSafetyPerc)
+bool TauArgus::SetTableSafety(long Index, bool DominanceRule,
+				long * DominanceNumber,
+				long * DominancePerc,
+				bool PQRule,
+				long * PriorPosteriorP,
+				long * PriorPosteriorQ,
+				long * PriorPosteriorN,
+				long * SafeMinRecAndHoldings,
+				long * PeepPerc,
+				long * PeepSafetyRange,
+				long * PeepMinFreqCellAndHolding,
+				bool ApplyPeep,
+				bool ApplyWeight, bool ApplyWeightOnSafetyRule,
+				bool ApplyHolding,bool ApplyZeroRule,
+				bool EmptyCellAsNonStructural, long NSEmptySafetyRange,
+				double ZeroSafetyRange,	long ManualSafetyPerc,
+				long * CellAndHoldingFreqSafetyPerc)
 {
-	int i = Index;
-	// check TableIndex
-	if (m_nvar == 0 || i < 0 || i >= m_ntab) {
-		return false;
-	}
+    int i = Index;
+    // check TableIndex
+    if (m_nvar == 0 || i < 0 || i >= m_ntab) {
+	return false;
+    }
 
-	// Holding and weights cannot be applied at the same time
-	if (ApplyHolding && ApplyWeight)	{
-		return false;
-	}
-	if (ApplyHolding && m_VarNrHolding < 0)  {
-		return false;
-	}
-	if (ApplyWeight && m_VarNrWeight < 0)  {
-		return false;
-	}
-	if (ApplyWeightOnSafetyRule && !ApplyWeight) {
-		return false;
-	}
-	if (ManualSafetyPerc < 0 || ManualSafetyPerc > 100)	{
-		return false;
-	}
+    // Holding and weights cannot be applied at the same time
+    if (ApplyHolding && ApplyWeight)	{
+	return false;
+    }
+    if (ApplyHolding && m_VarNrHolding < 0)  {
+	return false;
+    }
+    if (ApplyWeight && m_VarNrWeight < 0)  {
+	return false;
+    }
+    if (ApplyWeightOnSafetyRule && !ApplyWeight) {
+	return false;
+    }
+    if (ManualSafetyPerc < 0 || ManualSafetyPerc > 100)	{
+	return false;
+    }
 
-	if (CellAndHoldingFreqSafetyPerc[0] < 0 || CellAndHoldingFreqSafetyPerc[0] > 100) {
-		return false;
-	}
+    if (CellAndHoldingFreqSafetyPerc[0] < 0 || CellAndHoldingFreqSafetyPerc[0] > 100) {
+        return false;
+    }
 
-	if (ApplyHolding)	{
-		if (CellAndHoldingFreqSafetyPerc[1] < 0 || CellAndHoldingFreqSafetyPerc[1] > 100) {
-			return false;
-		}
+    if (ApplyHolding){
+	if (CellAndHoldingFreqSafetyPerc[1] < 0 || CellAndHoldingFreqSafetyPerc[1] > 100) {
+            return false;
 	}
-	if (ApplyHolding)	{
-		m_tab[i].ApplyHolding = true;
+    }
+    if (ApplyHolding){
+	m_tab[i].ApplyHolding = true;
+    }
+    else{
+	m_tab[i].ApplyHolding = false;
+    }
+    // set safety
+    if (DominanceRule) {
+	if (!m_tab[i].SetDominance(DominanceNumber,DominancePerc)) {
+            //*ERRORCODECANNOTAPPLYDOMINANCERULE,
+            return false;
 	}
-	else	{
-		m_tab[i].ApplyHolding = false;
+    }
+    //m_tab[i].nMaxCellValues = DominanceNumber;
+    if (PQRule)	{
+        if (!m_tab[i].SetPQRule(PriorPosteriorP, PriorPosteriorQ, PriorPosteriorN)) {
+            return false;
 	}
-	// set safety
-	if (DominanceRule) {
-		if (!m_tab[i].SetDominance(DominanceNumber,DominancePerc)) {
-			//*ERRORCODECANNOTAPPLYDOMINANCERULE,
-			return false;
-		}
-	}
-		//m_tab[i].nMaxCellValues = DominanceNumber;
-	if (PQRule)	{
-		if (!m_tab[i].SetPQRule(PriorPosteriorP, PriorPosteriorQ, PriorPosteriorN)) {
-			return false;
-		}
-	}
-	//m_tab[i].nMaxCellValues = PriorPosteriorN + 1;
+    }
+    //m_tab[i].nMaxCellValues = PriorPosteriorN + 1;
 
-	// Not too sure about this
-	/*default:
-		*pVal = false;
+    // Not too sure about this
+    /*default:
+	*pVal = false;
 	 return S_OK;
-	 */
-	if (EmptyCellAsNonStructural)	{
-		if (NSEmptySafetyRange < 0 || NSEmptySafetyRange >= 100)	{
-			return false;
-		}
-		m_tab[i].EmptyCellsAsNSEmpty = true;
-		m_tab[i].NSEmptySafetyRange = NSEmptySafetyRange;
+     */
+    if (EmptyCellAsNonStructural){
+	if (NSEmptySafetyRange < 0 || NSEmptySafetyRange >= 100){
+            return false;
 	}
+	m_tab[i].EmptyCellsAsNSEmpty = true;
+	m_tab[i].NSEmptySafetyRange = NSEmptySafetyRange;
+    }
 
-	// set min rec
-	if (!m_tab[i].SetSafeMinRecAndHold(SafeMinRecAndHoldings[0], SafeMinRecAndHoldings[1]) ) {
-		return false;
+    // set min rec
+    if (!m_tab[i].SetSafeMinRecAndHold(SafeMinRecAndHoldings[0], SafeMinRecAndHoldings[1]) ) {
+	return false;
+    }
+
+    // set other properties
+    // m_tab[i].SafetyRule = SafetyRule;
+    m_tab[i].ApplyWeight = ApplyWeight;
+    m_tab[i].ApplyWeightOnSafetyRule = ApplyWeightOnSafetyRule;
+
+    m_tab[i].ManualSafetyPerc = ManualSafetyPerc;
+    m_tab[i].CellFreqSafetyPerc = CellAndHoldingFreqSafetyPerc[0];
+    m_tab[i].HoldingFreqSafetyPerc = CellAndHoldingFreqSafetyPerc[1];
+    m_tab[i].ApplyZeroRule = ApplyZeroRule;
+    m_tab[i].ZeroSafetyRange = ZeroSafetyRange;
+    
+    if (ApplyPeep){
+	m_tab[i].ApplyPeeper = true;
+	if ((m_tab[i].PeepVarnr <0) || (m_tab[i].PeepVarnr >= m_nvar))	{
+            return false;
 	}
+    }
+    //check he does not give nonsense
+    m_tab[i].PeepPercCell_1 = PeepPerc[0];
+    m_tab[i].PeepPercCell_2 = PeepPerc[1];
+    m_tab[i].PeepPercHolding_1 = PeepPerc[2];
+    m_tab[i].PeepPercHolding_2 = PeepPerc[3];
+    m_tab[i].PeepMinFreqCell = PeepMinFreqCellAndHolding[0];
+    m_tab[i].PeepMinFreqHold = PeepMinFreqCellAndHolding[1];
+    m_tab[i].PeepSafetyRangePercCell  = PeepSafetyRange[0];
+    m_tab[i].PeepSafetyRangePercHolding  = PeepSafetyRange[1];
 
-	// set other properties
-	// m_tab[i].SafetyRule = SafetyRule;
-	m_tab[i].ApplyWeight = ApplyWeight;
-	m_tab[i].ApplyWeightOnSafetyRule = ApplyWeightOnSafetyRule;
+    // Now Set HoldingVarnr
 
-	m_tab[i].ManualSafetyPerc = ManualSafetyPerc;
-	m_tab[i].CellFreqSafetyPerc = CellAndHoldingFreqSafetyPerc[0];
-	m_tab[i].HoldingFreqSafetyPerc = CellAndHoldingFreqSafetyPerc[1];
-	m_tab[i].ApplyZeroRule = ApplyZeroRule;
-	m_tab[i].ZeroSafetyRange = ZeroSafetyRange;
-
-	if (ApplyPeep)	{
-		m_tab[i].ApplyPeeper = true;
-		if ((m_tab[i].PeepVarnr <0) || (m_tab[i].PeepVarnr >= m_nvar))	{
-			return false;
-		}
-	}
-	//check he does not give nonsense
-	m_tab[i].PeepPercCell_1 = PeepPerc[0];
-	m_tab[i].PeepPercCell_2 = PeepPerc[1];
-	m_tab[i].PeepPercHolding_1 = PeepPerc[2];
-	m_tab[i].PeepPercHolding_2 = PeepPerc[3];
-	m_tab[i].PeepMinFreqCell = PeepMinFreqCellAndHolding[0];
-	m_tab[i].PeepMinFreqHold = PeepMinFreqCellAndHolding[1];
-	m_tab[i].PeepSafetyRangePercCell  = PeepSafetyRange[0];
-	m_tab[i].PeepSafetyRangePercHolding  = PeepSafetyRange[1];
-
-	// Now Set HoldingVarnr
-
-	return true;
+    return true;
 }
 
 // Prepare the file for Hitas. The table is written in a file that could be used by
@@ -1580,80 +1556,80 @@ bool TauArgus::PrepareHITAS(long TableIndex, const char* NameParameterFile, cons
 {
     m_hitas.TempPath = TauTemp; // Temp doorgeven vanuit de TAU ipv zlf bepalen.
 
-	long t = TableIndex;
+    long t = TableIndex;
 
-	if (t < 0 || t >= m_ntab)	{
-		return false;
-	}
-	if (m_tab[t].HasRecode) t += m_ntab;
+    if (t < 0 || t >= m_ntab)	{
+        return false;
+    }
+    if (m_tab[t].HasRecode) t += m_ntab;
 
-	FILE *fdParameter = fopen(NameParameterFile, "w");
-	if (fdParameter == 0) {
-		return false;
-	}
+    FILE *fdParameter = fopen(NameParameterFile, "w");
+    if (fdParameter == 0) {
+        return false;
+    }
 
-	FILE *fdFiles = fopen(NameFilesFile, "w");
-	if (fdFiles == 0) {
-		fclose(fdParameter);
-		remove(NameParameterFile);
-		return false;
-	}
+    FILE *fdFiles = fopen(NameFilesFile, "w");
+    if (fdFiles == 0) {
+        fclose(fdParameter);
+	remove(NameParameterFile);
+	return false;
+    }
 
-	if (!m_hitas.WriteParameterFile(fdParameter, m_tab[t]) ) goto error;
-	if (!m_hitas.WriteFilesFile(fdFiles, m_tab[t], m_var) ) goto error;
+    if (!m_hitas.WriteParameterFile(fdParameter, m_tab[t]) ) goto error;
+    if (!m_hitas.WriteFilesFile(fdFiles, m_tab[t], m_var) ) goto error;
 
-	fclose(fdParameter);
-	fclose(fdFiles);
-	return true;
+    fclose(fdParameter);
+    fclose(fdFiles);
+    return true;
 
 error:
-	fclose(fdParameter);
-	fclose(fdFiles);
-	remove(NameParameterFile);
-	remove(NameFilesFile);
-	return false;
+    fclose(fdParameter);
+    fclose(fdFiles);
+    remove(NameParameterFile);
+    remove(NameFilesFile);
+    return false;
 }
 
 // Cells that are found to be secondary unsafe by Hitas is set as Unsafe in the table
 bool TauArgus::SetSecondaryHITAS(long TableIndex, long *nSetSecondary)
 {
-	string SecFileName = m_hitas.TempPath + m_hitas.NameSecFile;
-	int t = TableIndex;
+    string SecFileName = m_hitas.TempPath + m_hitas.NameSecFile;
+    int t = TableIndex;
 
-	if (t < 0 || t >= m_ntab)	{
-		return false;
-	}
+    if (t < 0 || t >= m_ntab)	{
+        return false;
+    }
 
-	if (m_tab[t].HasRecode) t += m_ntab;
+    if (m_tab[t].HasRecode) t += m_ntab;
 
-	FILE *fd = fopen(SecFileName.c_str(), "r");
-	if (fd == 0)	{
-		return false;
-	}
+    FILE *fd = fopen(SecFileName.c_str(), "r");
+    if (fd == 0){
+	return false;
+    }
 
-	bool res = m_tab[t].SetSecondaryHITAS(fd, m_var, nSetSecondary);
+    bool res = m_tab[t].SetSecondaryHITAS(fd, m_var, nSetSecondary);
 
-	fclose(fd);
+    fclose(fd);
 
-	#ifdef _DEBUGG
-		ShowTable("c:\\temp\\hitasres.txt", m_tab[t]);
-	#endif
+    #ifdef _DEBUGG
+	ShowTable("c:\\temp\\hitasres.txt", m_tab[t]);
+    #endif
 
-	return res; 
+    return res; 
 }
 
 // sets a Hierarchical codelist (i.e a codelist given through a file not
 // through digit splits)
 long TauArgus::SetHierarchicalCodelist(long VarIndex, const char* FileName, const char* LevelString)
 {
-	if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsHierarchical) {
-		return HC_NOTHIERARCHICAL;
-	}
-	if (m_var[VarIndex].nDigitSplit != 0) {
-		return HC_HASSPLITDIGITS;
-	}
+    if (VarIndex < 0 || VarIndex >= m_nvar || !m_var[VarIndex].IsHierarchical) {
+        return HC_NOTHIERARCHICAL;
+    }
+    if (m_var[VarIndex].nDigitSplit != 0) {
+	return HC_HASSPLITDIGITS;
+    }
 
-	return m_var[VarIndex].SetCodeList(FileName, LevelString);
+    return m_var[VarIndex].SetCodeList(FileName, LevelString);
 }
 
 // Gets a code if given an index and a variable number
@@ -1715,16 +1691,16 @@ long TauArgus::GetVarHierarchyDepth(long VarIndex, bool Recoded)
 bool TauArgus::UnsafeVariableCodes(long VarIndex, long CodeIndex, long *IsMissing, long *Freq, 
                                     std::string *Code, long *Count, long *UCArray)
 {
-	int t;
+    int t;
 
-	if (VarIndex < 0 || VarIndex >= m_nvar) {
-		return false;
-	}
+    if (VarIndex < 0 || VarIndex >= m_nvar) {
+	return false;
+    }
 
-	int nCodes = m_var[VarIndex].GetnCode();
-	if (CodeIndex < 0 || CodeIndex >= nCodes) {
-		return false;
-	}
+    int nCodes = m_var[VarIndex].GetnCode();
+    if (CodeIndex < 0 || CodeIndex >= nCodes) {
+	return false;
+    }
 
 	// compute count
 	*Count = 0;
@@ -2080,16 +2056,16 @@ bool TauArgus::WriteCellRecords(long TableIndex, const char* FileName,
 
 	int SBSCode = 0;
 	if (SBS > 0) {
-		if( (tab->NumberofMaxScoreCell == 0) && (tab->NumberofMaxScoreHolding == 0) )  {
-			SBSCode = 1;}
-    	if( (tab->NumberofMaxScoreCell == 1))  {
-			SBSCode = 2;}
-    	if( (tab->NumberofMaxScoreCell > 1))  {
-			SBSCode = 3;}
-    	if( (tab->NumberofMaxScoreHolding == 1))  {
-			SBSCode = 4;}
-    	if( (tab->NumberofMaxScoreHolding > 1))  {
-			SBSCode = 5;}
+            if( (tab->NumberofMaxScoreCell == 0) && (tab->NumberofMaxScoreHolding == 0) )  {
+                SBSCode = 1;}
+            if( (tab->NumberofMaxScoreCell == 1))  {
+                SBSCode = 2;}
+            if( (tab->NumberofMaxScoreCell > 1))  {
+                SBSCode = 3;}
+            if( (tab->NumberofMaxScoreHolding == 1))  {
+                SBSCode = 4;}
+            if( (tab->NumberofMaxScoreHolding > 1))  {
+                SBSCode = 5;}
 	}
 	long Dims[MAXDIM];
 	WriteCellRecord(fd, tab, Dims, 0, m_ValueSeparator, SBSCode, SBSLevel, SuppressEmpty, ShowUnsafe, EmbedQuotes, RespType);
@@ -2225,11 +2201,11 @@ void TauArgus::ThroughTable()
 // Set data in table. Since table can be given in many ways.
 // See SetTableSafetyInfo, not all input is valid input.
 bool TauArgus::SetInTable(long Index, char *sCode[],
-												double Shadow, double Cost,
-												double Resp, long Freq,
-												double *MaxScoreCell, double *MaxScoreHolding,
-												long Status, double LowerProtectionLevel, double UpperProtectionLevel,
-												long *ErrorCode, long *ErrVNum)
+			  double Shadow, double Cost,
+			  double Resp, long Freq,
+			  double *MaxScoreCell, double *MaxScoreHolding,
+			  long Status, double LowerProtectionLevel, double UpperProtectionLevel,
+			  long *ErrorCode, long *ErrVNum)
 {
 	*ErrVNum = 0;
 
@@ -2255,9 +2231,8 @@ bool TauArgus::SetInTable(long Index, char *sCode[],
 	}
 
 	// fill it in the table cell
-	if (!FillInTable(Index, sCodes, Cost,
-								Resp, Shadow, Freq, MaxScoreCell, MaxScoreHolding,
-								LowerProtectionLevel, UpperProtectionLevel, Status, *ErrorCode, *ErrVNum))  {
+	if (!FillInTable(Index, sCodes, Cost, Resp, Shadow, Freq, MaxScoreCell, 
+                        MaxScoreHolding, LowerProtectionLevel, UpperProtectionLevel, Status, *ErrorCode, *ErrVNum))  {
 		delete [] sCodes;
 		return false;
 	}
@@ -3095,6 +3070,11 @@ bool TauArgus::SetAllNonStructuralAsEmpty(long TableIndex)
 	return true;
 }
 
+
+string TauArgus::GetVersion(){
+    return VERSIONNUMBER;
+}
+
 string TauArgus::GetErrorString(long ErrorNumber)
 {
 	char ErrorNumberString[10];
@@ -3127,7 +3107,7 @@ void TauArgus::CleanUp()
 		delete [] m_var;
 		m_nvar = 0;
 	}
-
+        
 	CleanTables();
 
 	m_fname[0] = 0;
@@ -3294,10 +3274,10 @@ bool TauArgus::ConvertNumeric(char *code, double &d)
 // fill code lists in a table. This is the sibling of do micro record
 
 bool TauArgus::FillInTable(long Index, string *sCodes, double Cost,
-							   double Resp,double Shadow, long Freq,
-							   double *TopNCell, double *TopNHolding,
-								double LPL, double UPL,
-								long Status, long & error, long & ErrorVarNo)
+			   double Resp,double Shadow, long Freq,
+			   double *TopNCell, double *TopNHolding,
+                           double LPL, double UPL,
+                           long Status, long & error, long & ErrorVarNo)
 {
 	CTable *tab = &(m_tab[Index]);
 	long *tabind = new long [tab->nDim];
@@ -3344,9 +3324,9 @@ bool TauArgus::FillInTable(long Index, string *sCodes, double Cost,
 
 	// NOT too sure about this
 	// set value
-	dc ->SetResp(Resp);
-	dc ->SetShadow(Shadow);
-	dc ->SetCost(Cost);
+	dc->SetResp(Resp);
+	dc->SetShadow(Shadow);
+	dc->SetCost(Cost);
 	dc->SetStatus(Status);
 
 	// if frequency is given
@@ -3390,268 +3370,272 @@ bool TauArgus::FillInTable(long Index, string *sCodes, double Cost,
 // str: content microdata record
 // fill tables from a micro record
 
-//TODO: add computation of cellkey
+
 void TauArgus::FillTables(char *str)
 {
-	int i, j;
-	char code[MAXCODEWIDTH];
-	bool IsMissing;
-	string tempcode;
-	CVariable *var;
-	CDataCell dc;
-	string  tempPeepCode;
-        vector<char *> VarCodes;
-        bool readingFreeFormatResult=false; // Just to initialize PWOF 20170127
+    int i, j;
+    char code[MAXCODEWIDTH];
+    bool IsMissing;
+    string tempcode;
+    CVariable *var;
+    CDataCell dc;
+    string  tempPeepCode;
+    vector<char *> VarCodes;
+    bool readingFreeFormatResult=false; // Just to initialize PWOF 20170127
 
-	if (!InFileIsFixedFormat) {
-            readingFreeFormatResult = ReadVariablesFreeFormat(str, VarCodes);
-        }
-	//find the holding code and correct Holding Nr
-	// if a new holding code is found.
-	for (i = 0; i < m_ntab; i++){
-		CTable *tab1 = &(m_tab[i]);
-		if (tab1->ApplyHolding) {
-			// find out what the current holding number is
-			ASSERT(m_VarNrHolding >= 0);
-			var = &(m_var[m_VarNrHolding]);
-			if (InFileIsFixedFormat) {
-				strncpy(code, (char *)&str[var->bPos], var->nPos);
-				code[var->nPos] = 0;
-			}
-			else {
-				if (readingFreeFormatResult) {
-					strcpy(code, VarCodes[var->bPos]);
-                        		var->NormaliseCode(code);
-					code[var->nPos] = 0;
-				}
-			}
-
-			if (LastHoldingCode != code){
-				CurrentHoldingNr++;
-				LastHoldingCode = code;
-			}
+    if (!InFileIsFixedFormat) {
+        readingFreeFormatResult = ReadVariablesFreeFormat(str, VarCodes);
+    }
+    //find the holding code and correct Holding Nr
+    // if a new holding code is found.
+    for (i = 0; i < m_ntab; i++){
+        CTable *tab1 = &(m_tab[i]);
+        if (tab1->ApplyHolding) {
+            // find out what the current holding number is
+            ASSERT(m_VarNrHolding >= 0);
+            var = &(m_var[m_VarNrHolding]);
+            if (InFileIsFixedFormat) {
+		strncpy(code, (char *)&str[var->bPos], var->nPos);
+		code[var->nPos] = 0;
+            }
+            else {
+		if (readingFreeFormatResult) {
+                    strcpy(code, VarCodes[var->bPos]);
+                    var->NormaliseCode(code);
+                    code[var->nPos] = 0;
 		}
-		break;
+            }
+
+            if (LastHoldingCode != code){
+		CurrentHoldingNr++;
+		LastHoldingCode = code;
+            }
+	}
+	break;
+    }
+
+    // set TableIndex and recode in VARIABLES as na
+    for (i = 0; i < m_nvar; i++) {
+	m_var[i].TableIndex = -1;
+	m_var[i].Recode.DestCode = 0;
+	m_var[i].ValueToggle = 0;
+    }
+
+// compute for each involved variable the table index
+    for (i = 0; i < m_ntab; i++) {
+	CTable *tab = &(m_tab[i]);
+
+	// explanation variables
+	for (j = 0; j < tab->nDim; j++) {
+            var = &(m_var[tab->ExplVarnr[j]]);
+            if (var->TableIndex < 0) { // first time, so compute index
+		if (InFileIsFixedFormat) {
+                    strncpy(code, (char *)&str[var->bPos], var->nPos);
+                    code[var->nPos] = 0;
+		}
+		else {
+                    if (readingFreeFormatResult) {
+			strcpy(code, VarCodes[var->bPos]);
+                	var->NormaliseCode(code);
+			code[var->nPos] = 0;
+                    }
+                }
+		if (var->IsHierarchical && var->nDigitSplit == 0) {
+                    var->TableIndex = var->FindHierarchicalCode(code);
+		}
+		else {
+                    var->TableIndex = BinSearchStringArray(var->sCode, code, var->nMissing, IsMissing);
+		}
+		ASSERT(var->TableIndex >= 0);
+            }
+	}
+	// PeepVarnr
+
+	//if Peep variables are set. Find Peep Code
+	if (tab->ApplyPeeper) {
+            var = &(m_var[tab->PeepVarnr]);
+            if (InFileIsFixedFormat) {
+		strncpy(code, (char *)&str[var->bPos], var->nPos);
+		code[var->nPos] = 0;
+            }
+            else {
+		if (readingFreeFormatResult) {
+                    strcpy(code, VarCodes[var->bPos]);
+                    var->NormaliseCode(code);
+                    code[var->nPos] = 0;
+		}
+            }
+            tempPeepCode = code;
 	}
 
-	// set TableIndex and recode in VARIABLES as na
-	for (i = 0; i < m_nvar; i++) {
-		m_var[i].TableIndex = -1;
-		m_var[i].Recode.DestCode = 0;
-		m_var[i].ValueToggle = 0;
+	// ShadowVarnr
+	if ((tab->ShadowVarnr > 0) && (tab->ShadowVarnr < m_nvar))	{
+            var = &(m_var[tab->ShadowVarnr]);
+            if (var->ValueToggle == 0) { // first time, so compute index
+		if (InFileIsFixedFormat) {
+                    strncpy(code, (char *)&str[var->bPos], var->nPos);
+                    code[var->nPos] = 0;
+		}
+		else {
+                    if (readingFreeFormatResult) {
+			strcpy(code, VarCodes[var->bPos]);
+                	var->NormaliseCode(code);
+			code[var->nPos] = 0;
+                    }
+		}
+		var->Value = atof(code);
+		var->ValueToggle = 1;
+            }
 	}
-
-	// compute for each involved variable the table index
-	for (i = 0; i < m_ntab; i++) {
-		CTable *tab = &(m_tab[i]);
-
-		// explanation variables
-		for (j = 0; j < tab->nDim; j++) {
-			var = &(m_var[tab->ExplVarnr[j]]);
-			if (var->TableIndex < 0) { // first time, so compute index
-				if (InFileIsFixedFormat) {
-					strncpy(code, (char *)&str[var->bPos], var->nPos);
-					code[var->nPos] = 0;
-				}
-				else {
-					if (readingFreeFormatResult) {
-						strcpy(code, VarCodes[var->bPos]);
-                                		var->NormaliseCode(code);
-						code[var->nPos] = 0;
-					}
-				}
-				if (var->IsHierarchical && var->nDigitSplit == 0) {
-					var->TableIndex = var->FindHierarchicalCode(code);
-				}
-				else {
-					var->TableIndex = BinSearchStringArray(var->sCode, code, var->nMissing, IsMissing);
-
-				}
-				ASSERT(var->TableIndex >= 0);
-			}
-		}
-		// PeepVarnr
-
-		//if Peep variables are set. Find Peep Code
-		if (tab->ApplyPeeper) {
-			var = &(m_var[tab->PeepVarnr]);
-			if (InFileIsFixedFormat) {
-				strncpy(code, (char *)&str[var->bPos], var->nPos);
-				code[var->nPos] = 0;
-			}
-			else {
-				if (readingFreeFormatResult) {
-					strcpy(code, VarCodes[var->bPos]);
-                        		var->NormaliseCode(code);
-					code[var->nPos] = 0;
-				}
-			}
-			tempPeepCode = code;
-		}
-
-		// ShadowVarnr
-		if ((tab->ShadowVarnr > 0) && (tab->ShadowVarnr < m_nvar))	{
-			var = &(m_var[tab->ShadowVarnr]);
-			if (var->ValueToggle == 0) { // first time, so compute index
-				if (InFileIsFixedFormat) {
-					strncpy(code, (char *)&str[var->bPos], var->nPos);
-					code[var->nPos] = 0;
-				}
-				else {
-					if (readingFreeFormatResult) {
-						strcpy(code, VarCodes[var->bPos]);
-                                		var->NormaliseCode(code);
-						code[var->nPos] = 0;
-					}
-				}
-				var->Value = atof(code);
-				var->ValueToggle = 1;
-			}
-		}
 	/*	else	{
 			var->Value = 1;
 			var ->ValueToggle = 1;
 		}*/
 
-		// CostVarnr
-		if (tab->CostVarnr >= 0) {
-			var = &(m_var[tab->CostVarnr]);
-			if (var->ValueToggle == 0) { // first time, so compute index
-				if (InFileIsFixedFormat) {
-					strncpy(code, (char *)&str[var->bPos], var->nPos);
-					code[var->nPos] = 0;
-				}
-				else {
-					if (readingFreeFormatResult) {
-						strcpy(code, VarCodes[var->bPos]);
-                                		var->NormaliseCode(code);
-						code[var->nPos] = 0;
-					}
-				}
-				var->Value = atof(code);
-				var->ValueToggle = 1;
-			}
-		}
-
-		// RespVarnr
-		if ((tab->ResponseVarnr >= 0) && (tab->ResponseVarnr <m_nvar))	{
-			var = &(m_var[tab->ResponseVarnr]);
-			if (var->ValueToggle == 0) { // first time, so compute value
-				if (InFileIsFixedFormat) {
-					strncpy(code, (char *)&str[var->bPos], var->nPos);
-					code[var->nPos] = 0;
-				}
-				else {
-					if (readingFreeFormatResult) {
-						strcpy(code, VarCodes[var->bPos]);
-                                		var->NormaliseCode(code);
-						code[var->nPos] = 0;
-					}
-				}
-				var->Value = atof(code);
-				var->ValueToggle = 1;
-			}
-		}
-                
-                // CellKeyVarnr
-                if ((tab->CellKeyVarnr >= 0) && (tab->CellKeyVarnr < m_nvar)) {
-                    var = &(m_var[tab->CellKeyVarnr]);
-                    if (var->ValueToggle == 0) { // first time, so compute value
-                        if (InFileIsFixedFormat) {
-                            strncpy(code, (char *)&str[var->bPos], var->nPos);
-                            code[var->nPos] = 0;
-                        }
-                        else {
-                            if (readingFreeFormatResult){
-                                strcpy(code, VarCodes[var->bPos]);
-                                var->NormaliseCode(code);
-                                code[var->nPos] = 0;
-                            }
-                        }
-                        var->Value = atof(code);
-                        var->ValueToggle = 1;
-                    }
-                }
-	}
-
-	// since there is only one weight var
-	// weight var
-	if (m_VarNrWeight >= 0) {
-		var = &(m_var[m_VarNrWeight]);
-		if (var->ValueToggle == 0) { // first time, so compute value
-			if (InFileIsFixedFormat) {
-				var = &(m_var[m_VarNrWeight]);
-				strncpy(code, (char *)&str[var->bPos], var->nPos);
-				code[var->nPos] = 0;
-			}
-			else {
-				if (readingFreeFormatResult) {
-					strcpy(code, VarCodes[var->bPos]);
-                                        var->NormaliseCode(code);
-					code[var->nPos] = 0;
-				}
-			}
-			var->Value = atof(code);
-			var->ValueToggle = 1;
-		}
-	}
-
-	// now tabulate all tables from list
-	for (i = 0; i < m_ntab; i++) {
-            CTable *table = &m_tab[i];
-		// set peeps to peep 1 and peep 2
-
-		if (table->ApplyPeeper) {
-
-			if (tempPeepCode == m_var[table->PeepVarnr].PeepCode1 ||
-			  tempPeepCode == m_var[table->PeepVarnr].PeepCode2) {
-			  dc.SetPeepCell(m_var[table->ShadowVarnr].Value);
-			  dc.SetPeepHolding(m_var[table->ShadowVarnr].Value);
-			  if (tempPeepCode == m_var[table->PeepVarnr].PeepCode1)	{
-					dc.SetPeepSortCell(PEEP1);
-					dc.SetPeepSortHolding(PEEP1);
-			  }
-			  else	{
-					dc.SetPeepSortCell(PEEP2);
-					dc.SetPeepSortHolding(PEEP2);
-			  }
-		  }
-		  else {
-			  dc.SetPeepCell(0);
-			  dc.SetPeepHolding(0);
-			  dc.SetPeepSortCell(NOPEEP);
-			  dc.SetPeepSortHolding(NOPEEP);
-		  }
-
-	  }
-
-		dc.SetWeight(m_var[m_VarNrWeight].Value);
-		if ((table->ResponseVarnr >= 0) && (table->ResponseVarnr < m_nvar))	{
-			dc.SetResp(m_var[table->ResponseVarnr].Value);
-                        dc.SetNWResp(m_var[table->ResponseVarnr].Value);
-		}
-		else	{	//freq table
-				dc.SetResp(1);
-                                dc.SetNWResp(1);
-		}
-		if ((table->ShadowVarnr > 0) && (table->ShadowVarnr < m_nvar))	{
-
- 			dc.SetShadow(m_var[table->ShadowVarnr].Value);
-		}
-                
-                if ((table->CellKeyVarnr > 0) && (table->CellKeyVarnr < m_nvar))	{
- 			dc.SetCellKey(m_var[table->CellKeyVarnr].Value);
-		}
-                
-		if (table->CostVarnr >= 0) {
- 		  dc.SetCost(m_var[table->CostVarnr].Value);
+	// CostVarnr
+	if (tab->CostVarnr >= 0) {
+            var = &(m_var[tab->CostVarnr]);
+            if (var->ValueToggle == 0) { // first time, so compute index
+                if (InFileIsFixedFormat) {
+                    strncpy(code, (char *)&str[var->bPos], var->nPos);
+                    code[var->nPos] = 0;
 		}
 		else {
- 		  dc.SetCost(0); // later comes freq or constant 1 etc
+                    if (readingFreeFormatResult) {
+                        strcpy(code, VarCodes[var->bPos]);
+                        var->NormaliseCode(code);
+			code[var->nPos] = 0;
+                    }
 		}
-		dc.SetFreq(1);
-		AddTableCells(m_tab[i], dc, 0, 0);
+		var->Value = atof(code);
+		var->ValueToggle = 1;
+            }
 	}
+
+	// RespVarnr
+	if ((tab->ResponseVarnr >= 0) && (tab->ResponseVarnr <m_nvar))	{
+            var = &(m_var[tab->ResponseVarnr]);
+            if (var->ValueToggle == 0) { // first time, so compute value
+		if (InFileIsFixedFormat) {
+                    strncpy(code, (char *)&str[var->bPos], var->nPos);
+                    code[var->nPos] = 0;
+		}
+		else {
+                    if (readingFreeFormatResult) {
+			strcpy(code, VarCodes[var->bPos]);
+                	var->NormaliseCode(code);
+			code[var->nPos] = 0;
+                    }
+		}
+		var->Value = atof(code);
+		var->ValueToggle = 1;
+            }
+	}
+                
+        // CellKeyVarnr
+        if ((tab->CellKeyVarnr >= 0) && (tab->CellKeyVarnr < m_nvar)) {
+            var = &(m_var[tab->CellKeyVarnr]);
+            if (var->ValueToggle == 0) { // first time, so compute value
+                if (InFileIsFixedFormat) {
+                    strncpy(code, (char *)&str[var->bPos], var->nPos);
+                    code[var->nPos] = 0;
+                }
+                else {
+                    if (readingFreeFormatResult){
+                        strcpy(code, VarCodes[var->bPos]);
+                        var->NormaliseCode(code);
+                        code[var->nPos] = 0;
+                    }
+                }
+                var->Value = atof(code);
+                var->ValueToggle = 1;
+            }
+        }
+    }
+
+    // since there is only one weight var
+    // weight var
+    if (m_VarNrWeight >= 0) {
+	var = &(m_var[m_VarNrWeight]);
+	if (var->ValueToggle == 0) { // first time, so compute value
+            if (InFileIsFixedFormat) {
+		var = &(m_var[m_VarNrWeight]);
+		strncpy(code, (char *)&str[var->bPos], var->nPos);
+		code[var->nPos] = 0;
+            }
+            else {
+		if (readingFreeFormatResult) {
+                    strcpy(code, VarCodes[var->bPos]);
+                    var->NormaliseCode(code);
+                    code[var->nPos] = 0;
+		}
+            }
+            var->Value = atof(code);
+            var->ValueToggle = 1;
+	}
+    }
+
+    // now tabulate all tables from list
+    for (i = 0; i < m_ntab; i++) {
+        CTable *table = &m_tab[i];
+	// set peeps to peep 1 and peep 2
+
+	if (table->ApplyPeeper) {
+            if (tempPeepCode == m_var[table->PeepVarnr].PeepCode1 || tempPeepCode == m_var[table->PeepVarnr].PeepCode2) {
+                dc.SetPeepCell(m_var[table->ShadowVarnr].Value);
+		dc.SetPeepHolding(m_var[table->ShadowVarnr].Value);
+		if (tempPeepCode == m_var[table->PeepVarnr].PeepCode1)	{
+                    dc.SetPeepSortCell(PEEP1);
+                    dc.SetPeepSortHolding(PEEP1);
+		}
+		else {
+                    dc.SetPeepSortCell(PEEP2);
+                    dc.SetPeepSortHolding(PEEP2);
+		}
+            }
+            else {
+                dc.SetPeepCell(0);
+		dc.SetPeepHolding(0);
+		dc.SetPeepSortCell(NOPEEP);
+		dc.SetPeepSortHolding(NOPEEP);
+            }
+        }
+
+        if ((m_VarNrWeight>=0))	dc.SetWeight(m_var[m_VarNrWeight].Value); // Why was this without the if-clause?
+        
+        if ((table->ResponseVarnr >= 0) && (table->ResponseVarnr < m_nvar)) {
+            dc.SetResp(m_var[table->ResponseVarnr].Value);
+            dc.SetNWResp(m_var[table->ResponseVarnr].Value);
+	}
+	else {	//freq table
+            dc.SetResp(1);
+            dc.SetNWResp(1);
+	}
+	if ((table->ShadowVarnr >= 0) && (table->ShadowVarnr < m_nvar)){
+            dc.SetShadow(m_var[table->ShadowVarnr].Value);
+	}
+                
+        if ((table->CellKeyVarnr >= 0) && (table->CellKeyVarnr < m_nvar)){
+            // Standard cellkey: add all recordkeys
+            dc.SetCellKey(m_var[table->CellKeyVarnr].Value);
+                        
+            // Special cellkey: only add recordkeys of |contributions| > 0 (in practice: > 1E-8)
+            if ((table->ResponseVarnr >= 0) && (table->ResponseVarnr < m_nvar)){
+                if (fabs(m_var[table->ResponseVarnr].Value) > 1E-8){
+                    dc.SetCellKeyNoZeros(m_var[table->CellKeyVarnr].Value);
+                }
+            }
+	}
+                
+	if (table->CostVarnr >= 0) {
+            dc.SetCost(m_var[table->CostVarnr].Value);
+        }
+	else {
+            dc.SetCost(0); // later comes freq or constant 1 etc
+	}
+	dc.SetFreq(1);
+	AddTableCells(m_tab[i], dc, 0, 0);
+    }
 }
 
 
@@ -3707,23 +3691,32 @@ void TauArgus::AddTableCell(CTable &t, CDataCell AddCell, long cellindex)
 	CDataCell *dc = t.GetCell(cellindex);
 	// Does a new cell have to be created
 	if (!dc->IsFilled) {
-		CDataCell *dcempty = new CDataCell(t.NumberofMaxScoreCell,t.NumberofMaxScoreHolding,t.ApplyHolding, t.ApplyWeight);
+		CDataCell *dcempty = new CDataCell(t.NumberofMaxScoreCell,t.NumberofMaxScoreHolding,t.ApplyHolding,t.ApplyWeight);
 		t.CellPtr[cellindex] = dcempty;
 		dc = t.GetCell(cellindex);
 	}
-
 
 	// copy weight
 	if (t.ApplyWeight) {
 		weight = m_var[m_VarNrWeight].Value;
 	}
+
+        // Needed for CKMType = "D", i.e., if KeepMinScore = true
+        if (t.KeepMinScore){
+            x = fabs(m_var[t.ShadowVarnr].Value);
+            if (x < dc->MinScoreCell){
+                dc->MinScoreCell = x;
+                if (t.ApplyWeight) dc->MinScoreWeightCell = weight;
+            }
+        }
+
 	// adjust the max score array to make way for a new greater score
 	if (t.NumberofMaxScoreCell > 0) {
 		x = fabs(m_var[t.ShadowVarnr].Value);
 		for (i = 0; i < t.NumberofMaxScoreCell; i++) {
 			if (x > dc->MaxScoreCell[i]) {
 				// shift rest
-				for (j = t.NumberofMaxScoreCell- 2; j >= i; j--) {
+				for (j = t.NumberofMaxScoreCell - 2; j >= i; j--) {
 					dc->MaxScoreCell[j + 1] = dc->MaxScoreCell[j];
 					if (t.ApplyWeight)	{
 						dc->MaxScoreWeightCell[j + 1] = dc->MaxScoreWeightCell[j];
@@ -3737,7 +3730,7 @@ void TauArgus::AddTableCell(CTable &t, CDataCell AddCell, long cellindex)
 				break;
 			}
 		}
-  }
+        }
 
 	// apply weight
 	if (t.ApplyWeight) {
@@ -3777,7 +3770,6 @@ void TauArgus::AddTableCell(CTable &t, CDataCell AddCell, long cellindex)
 	}
 	// Do the cell addition
 	*dc += AddCell;
-
 }
 
 // when a table is recoded. The cells are added. to create the recoded table
@@ -3800,50 +3792,45 @@ void TauArgus::AddTableToTableCell(CTable &tabfrom, CTable &tabto, long ifrom, l
 // Frequencys and Topn are checked when holdings exist
 void TauArgus::MergeLastTempShadow()
 {
-	for (int i = 0; i < m_ntab; i++)
-	{
-		CTable *tab = &(m_tab[i]);
-		if (tab ->ApplyHolding)
-		{
-			for (int j = 0; j < tab->nCell;j++)
-			{
-				CDataCell *dc = tab->GetCell(j);
-				if (dc->GetHoldingNr() != -1){
-					if (tab->NumberofMaxScoreHolding > 0) {
-						double x = fabs(dc->GetTempShadow());
-						for (int k = 0; k < tab->NumberofMaxScoreHolding; k++) {
-							if (x > dc->MaxScoreHolding[k]) {
-							// shift rest
-								for (int l = tab->NumberofMaxScoreHolding - 2; l >= k; l--) {
-									dc->MaxScoreHolding[l + 1] = dc->MaxScoreHolding[l];
-									dc->HoldingnrPerMaxScore[l+1] =dc->HoldingnrPerMaxScore[l];
-								}
-								dc->MaxScoreHolding[k] = x;
-								dc->HoldingnrPerMaxScore[k]=dc->GetHoldingNr();
-								break;
-							}
-						}
-					}
-					// add Freq once more
-					dc->SetFreqHolding(dc->GetFreqHolding() + 1);
-//					if ((dc->GetPeepSortHolding() == PEEP1) || (dc->GetPeepSortHolding() == PEEP2)) { AHNL 5.1.2004: Fout Moet zijn TempSort
-					if ((dc->GetTempPeepSortCell() == PEEP1) || (dc->GetTempPeepSortCell() == PEEP2)) {
-
-						if (dc->GetPeepHolding() < dc->GetTempShadow()) {
-							dc->SetPeepHolding(dc->GetTempShadow());
-						}
-						if (dc->GetPeepSortHolding() == NOPEEP || dc->GetPeepSortHolding() == EMPTY) {
-						   dc->SetPeepSortHolding (dc->GetTempPeepSortCell()); // AHNL 5.1.2004 toegevoegd
-						}
-
-					}
-					if (tab->IsFrequencyTable)	{
-						dc->SetResp(dc->GetFreqHolding());
-					}
+    for (int i = 0; i < m_ntab; i++){
+	CTable *tab = &(m_tab[i]);
+	if (tab ->ApplyHolding){
+            for (int j = 0; j < tab->nCell;j++){
+		CDataCell *dc = tab->GetCell(j);
+		if (dc->GetHoldingNr() != -1){
+                    if (tab->NumberofMaxScoreHolding > 0) {
+			double x = fabs(dc->GetTempShadow());
+			for (int k = 0; k < tab->NumberofMaxScoreHolding; k++) {
+                            if (x > dc->MaxScoreHolding[k]) {
+                            // shift rest
+                                for (int l = tab->NumberofMaxScoreHolding - 2; l >= k; l--) {
+                                    dc->MaxScoreHolding[l + 1] = dc->MaxScoreHolding[l];
+                                    dc->HoldingnrPerMaxScore[l+1] =dc->HoldingnrPerMaxScore[l];
 				}
+				dc->MaxScoreHolding[k] = x;
+				dc->HoldingnrPerMaxScore[k]=dc->GetHoldingNr();
+				break;
+                            }
 			}
+                    }
+                    // add Freq once more
+                    dc->SetFreqHolding(dc->GetFreqHolding() + 1);
+//                  if ((dc->GetPeepSortHolding() == PEEP1) || (dc->GetPeepSortHolding() == PEEP2)) { AHNL 5.1.2004: Fout Moet zijn TempSort
+                    if ((dc->GetTempPeepSortCell() == PEEP1) || (dc->GetTempPeepSortCell() == PEEP2)) {
+			if (dc->GetPeepHolding() < dc->GetTempShadow()) {
+                            dc->SetPeepHolding(dc->GetTempShadow());
+			}
+			if (dc->GetPeepSortHolding() == NOPEEP || dc->GetPeepSortHolding() == EMPTY) {
+                            dc->SetPeepSortHolding (dc->GetTempPeepSortCell()); // AHNL 5.1.2004 toegevoegd
+			}
+                    }
+                    if (tab->IsFrequencyTable)	{
+			dc->SetResp(dc->GetFreqHolding());
+                    }
 		}
+            }
 	}
+    }
 }
 
 // All holding Tables need to get initialized.
@@ -4173,7 +4160,7 @@ int TauArgus::SetCode2Recode(int VarIndex, char *DestCode, char *SrcCode1, char 
 	}
 
 	// c1 and c2 now are correct, I assume
-	ASSERT(c1 >= 0 && c1 < v->sCode.size() && c2 >= c1 && c2 < v->sCode.size());
+	ASSERT(c1 >= 0 && c1 < (int) v->sCode.size() && c2 >= c1 && c2 < (int) v->sCode.size());
 
 	// search destcode in list
 	ASSERT(v->nMissing > 0 && v->nMissing < 3);
@@ -4186,7 +4173,7 @@ int TauArgus::SetCode2Recode(int VarIndex, char *DestCode, char *SrcCode1, char 
 		return R_MISSING2VALID;
 	}
 
-	ASSERT(DestIndex >= 0 && DestIndex < v->Recode.sCode.size() );
+	ASSERT(DestIndex >= 0 && DestIndex < (int) v->Recode.sCode.size() );
 	if (DestIndex < 0 || DestIndex >= ((int) v->Recode.sCode.size()) ) {
 		return PROGRAMERROR;
 	}
@@ -4252,7 +4239,8 @@ bool TauArgus::ComputeRecodeTables()
 		m_tab[m_ntab + i].HasRecode = false;
 		ComputeCellStatuses(m_tab[m_ntab + i]);
 		SetProtectionLevels(m_tab[m_ntab + i]);
-                ComputeCellKeys(m_tab[m_ntab + i]);
+                // [30-06-2020] taking fractional part is already done when contructing tablecell, so no longer needed
+                // ComputeCellKeys(m_tab[m_ntab + i]);
 
 #ifdef _DEBUGG
 		{ int i;
@@ -4427,13 +4415,13 @@ void TauArgus::SetProtectionLevels(CTable &tab)
 	}
 }
 
-void TauArgus::ComputeCellKeys(CTable &tab)
+/*void TauArgus::ComputeCellKeys(CTable &tab)
 {
     for (int c=0; c<tab.nCell; c++){
         CDataCell *dc = tab.GetCell(c);
         tab.ComputeCellKeyCell(*dc);
     }
-}
+}*/
 
 // set that the table has been recoded
 void TauArgus::SetTableHasRecode()
@@ -4612,6 +4600,7 @@ void TauArgus::WriteSBSStaart(FILE *fd, CTable *tab, long *Dim, char ValueSep, l
 	fprintf(fd, ",%d%c", f1, ValueSep);
 //		fprintf(fd, "%c", ValueSep);
 	bool UnsafeRule = false;
+//        printf("dc->GetResp() = %lf dc->GetStatus() = %ld SBSCode = %ld\n", dc->GetResp(), dc->GetStatus(), SBSCode);
 	switch (dc->GetStatus() ) {
 		case CS_SAFE:
 		case CS_SAFE_MANUAL:
@@ -4621,22 +4610,28 @@ void TauArgus::WriteSBSStaart(FILE *fd, CTable *tab, long *Dim, char ValueSep, l
 			break;
 		case CS_UNSAFE_FREQ:
 			fprintf(fd, "A");
+//                        printf("A\n");
 			break;
 		case CS_UNSAFE_PEEP:
 		case CS_UNSAFE_ZERO:
-    	case CS_UNSAFE_SINGLETON:
+                case CS_UNSAFE_SINGLETON:
 		case CS_UNSAFE_MANUAL:
 			fprintf(fd, "B");
+//                        printf("B\n");
 			UnsafeRule = true;
 			break;
 		case CS_UNSAFE_RULE:
 			if (PQRule) {
 				fprintf(fd, "F"); }
-			else
-			if ((SBSCode == 3) || (SBSCode == 5)) {
-				fprintf(fd, "C"); }
-			else {
+//                                printf("F\n");}
+			else{
+                            if ((SBSCode == 3) || (SBSCode == 5)) {
+				fprintf(fd, "C");} 
+//                                printf("C\n");}
+                            else {
 				fprintf(fd, "B"); }
+//                                printf("B\n");}
+                        }
 			UnsafeRule = true;
 			break;
 		case CS_SECONDARY_UNSAFE:
@@ -5064,7 +5059,7 @@ void TauArgus::AdjustNonBasalCells(CTable *tab, long TargetDim, long *DimNr, lon
 	vector<unsigned int> Children;
 	CDataCell *dc;
 	CDataCell *dctemp;//, *dcramya;
-   CDataCell *addcell;
+        CDataCell *addcell;
 	long tempDimNr;
 	double sum;//,test;
 
@@ -5298,7 +5293,7 @@ long TauArgus::WriteCellInTempFile(long UnsafeCellNum, long TableIndex, long Cel
 	long *SubTableTuple = new long [tab->nDim];
 	long *TableCellIndex = new long [tab->nDim];
 	long *MarginalCellIndex = new long [tab->nDim];
-	long * SubTableCellIndex = new long [tab->nDim];
+	long *SubTableCellIndex = new long [tab->nDim];
 	long marginal;
 	long nsubtable = NumberOfSubTables(TableIndex);
 	for (i = 0; i<nsubtable; i++)	{
@@ -5648,7 +5643,7 @@ bool TauArgus::WriteTableSequenceHierarchyInAMPL(FILE *fd, long tabind,
 																	 long varind)
 {
 	long j, k;
-	long RowNum;
+	long RowNum=0;
 
 	CTable *tab = &(m_tab[tabind]);
 
@@ -5867,7 +5862,7 @@ bool TauArgus::testampl(long ind)
  * @return              maximum amount of noise (absolute value)
  */
 
-int TauArgus::SetCellKeyValues(long TabNo, const char* PTableFile, int *MinDiff, int *MaxDiff){
+int TauArgus::SetCellKeyValuesFreq(long TabNo, std::string PTableFile, int *MinDiff, int *MaxDiff){
     CDataCell *dc;
     int RowNr, Diff;
     double minDiffWeighted=1e10, maxDiffWeighted=-1e10;
@@ -5875,12 +5870,10 @@ int TauArgus::SetCellKeyValues(long TabNo, const char* PTableFile, int *MinDiff,
     PTableRow row;
     PTableRow::iterator pos;
     
-    if (!ptable.ReadFromFile(PTableFile)) return -9;
-    
-    if (TabNo < 0 || TabNo >= m_ntab) {
-		return -1;
-    }
+    if (TabNo < 0 || TabNo >= m_ntab) return -1;
     if (m_tab[TabNo].HasRecode) TabNo += m_ntab;
+
+    if (!ptable.ReadFromFreqFile(PTableFile)) return -9;
     
     for (long i=0; i < m_tab[TabNo].nCell; i++){
         dc = m_tab[TabNo].GetCell(i);
@@ -5890,8 +5883,10 @@ int TauArgus::SetCellKeyValues(long TabNo, const char* PTableFile, int *MinDiff,
                 row = ptable.GetData()[RowNr];
                 Diff = 0;
                 for (pos=row.begin();pos!=row.end();++pos){
-                    Diff = pos->first - RowNr;
-                    if (dc->GetCellKey() < pos->second) break;
+                    if (dc->GetCellKey() < pos->p_ub){
+                        Diff = pos->j - RowNr;
+                        break;
+                    }
                 }
                 dc->SetCKMValue((double) (dc->GetNWResp() + Diff));
             }
@@ -5917,4 +5912,226 @@ int TauArgus::SetCellKeyValues(long TabNo, const char* PTableFile, int *MinDiff,
         MaxDiff[0] = (int) std::round(maxDiffWeighted);
     }
     return 1;
+}
+
+int TauArgus::SetCellKeyValuesCont(long TabNo, std::string PTableFileCont, std::string PTableFileSep, std::string CKMType, 
+                                    int topK, bool IncludeZeros, bool Parity, bool Separation, double m1sqr, std::string Scaling, 
+                                    double s0, double s1, double z_f, double q, double* epsilon, double muC){
+    CDataCell *dc;
+    int nDec;
+    double z_s, E, muCused, di;
+    double xj, Vj, cellKey, x, xdelta, X1help;
+    double m_one = 0;
+    std::map<int, PTableDRow> ptableL, ptableS;
+    std::map<int, PTableDRow>::reverse_iterator ptablepos;
+    PTableCont ptableLarge;
+    PTableCont ptableSmall;
+    PTableDRow row;
+    PTableDRow::iterator pos;
+
+    if (TabNo < 0 || TabNo >= m_ntab) return -1;
+    if (m_tab[TabNo].HasRecode) TabNo += m_ntab;
+
+    if (!ptableLarge.ReadFromFile(PTableFileCont)) return -90; // Need ptable for continuous CKM
+    
+    E = epsilon[0]*epsilon[0]; // Should be 1.0
+    if (topK > 1){ // Need E for proportional flex function and threshold g1 in case of Separation and topK>=2
+        for (int i=1; i<topK; i++){
+            E += epsilon[i]*epsilon[i];
+        }
+    }
+    
+    if (Separation) { // If SEPARATION=N then z_s=0 
+        if (!ptableSmall.ReadFromFile(PTableFileSep)) return -91; // If SEPARATION=Y then need additional ptable
+        //Calculate m1sqr from ptable
+        ptablepos = ptableSmall.GetData("all").rbegin();
+        di = (double) ptablepos->first;
+        for (pos=ptablepos->second.begin();pos!=ptablepos->second.end();++pos){
+            m_one += (pos->first - di)*(pos->first - di)*pos->second[0];  // (j-i)^2 * pij
+        }
+        m_one = sqrt(m_one);
+        z_s = m_one/(s1*sqrt(E));
+                
+        ptableS = ptableSmall.GetData("all"); // Will need additional ptable for small values
+        if (ptableS.size()==0) return -92; // No small table with "all"
+    }
+    else{
+        z_s = 0;
+        m_one = 1;
+    }
+    
+    nDec = m_var[m_tab[TabNo].CellKeyVarnr].nDec; // Number of decimals in recordkey
+    
+    // Loop through all cells of the table
+    for (long i=0; i < m_tab[TabNo].nCell; i++){
+        dc = m_tab[TabNo].GetCell(i);
+        cellKey = IncludeZeros ? dc->GetCellKey() : dc->GetCellKeyNoZeros();
+        
+        if (dc->GetStatus() != CS_EMPTY){ // not empty
+            if (dc->GetStatus() != CS_PROTECT_MANUAL){ // not protected
+                if (Parity){
+                    ptableL = (dc->GetFreq() % 2 == 0) ? ptableLarge.GetData("even") : ptableLarge.GetData("odd");
+                    if (ptableL.size()==0) return -93; // No "even" or "odd" found
+                }
+                else{
+                    ptableL = ptableLarge.GetData("all");
+                    if (ptableL.size()==0) return -94; // No "all" found
+                }
+                // j = 1
+                // First implementation: SAMEKEY = NO, i.e., also perturb cell key for j=1
+                cellKey = ShiftFirstDigit(cellKey,nDec);
+
+                // j = 1
+                xj = GetXj(CKMType, 1, *dc, m_tab[TabNo].ApplyWeight);
+                // Use muC > 0 only if unsafe cell and xj large enough
+                // otherwise set muC = 0
+                if (((dc->GetStatus() < CS_UNSAFE_RULE) || (dc->GetStatus() > CS_UNSAFE_MANUAL)) || (fabs(xj) < z_s)){ muCused = 0; }
+                else {muCused = muC;}
+                x = dc->GetResp();
+                xdelta = (fabs(xj) >= z_s) ? xj*flexfunction(fabs(xj),z_s,s0,s1,z_f,q,Scaling) : 1.0;
+                if (fabs(x) < fabs(xdelta)){
+                    xdelta = x;
+                    xj = x/s1;
+                    if (fabs(xj) < z_s) xdelta = 1.0;
+                }
+                Vj = LookUpVinptable( (fabs(xj) > z_s)? ptableL : ptableS, fabs(x/xdelta), cellKey);
+
+                X1help = mysign(x)*fabs(xdelta)*mysign(Vj)*(muCused + fabs(Vj));
+                
+                if (Vj >= 0){ x = x + X1help; }
+                else{
+                    if (x<0){ x = x + min(X1help, -x); }
+                    else{ x = x + max(X1help, -x); }
+                }
+
+                //printf("x_1=%lf xdelta=%lf a=%lf cellKey=%lf V_1=%lf X1help=%lf x=%lf\n",xj,xdelta,fabs(x/xdelta),cellKey,Vj,X1help,x);
+                
+                // j = 2, ..., topK
+                // What if topK > number of contributions to the cell??? => only go up to number of contributions = dc.GetFreq() (if no holdings)
+                for (int j=2; ((j<=topK) && (j<=dc->GetFreq())); j++){ // Only in case topK >=2 
+                    xj = GetXj(CKMType, j, *dc, m_tab[TabNo].ApplyWeight);
+                    if (fabs(xj) >= z_s){
+                        xdelta = xj*epsilon[j-1]*flexfunction(fabs(xj),z_s,s0,s1,z_f,q,Scaling);
+                        if (fabs(x) < fabs(xdelta)){
+                            xdelta = x;
+                            xj = x/(epsilon[j-1]*s1);
+                        }
+                        if (fabs(xj) >= z_s){ // xj may have changed so need to check again
+                            cellKey = ShiftFirstDigit(cellKey,nDec); // always do this for j>=2
+                            Vj = LookUpVinptable(ptableL, fabs(x/xdelta), cellKey);
+                            x = x + mysign(x)*fabs(xdelta)*Vj; // never use muC for j>=2
+                        }// else add zero, i.e. do nothing
+                    }// else add zero, i.e. do nothing
+                    
+                }
+                dc->SetCKMValue(x);
+            }
+            else{ // if protected do nothing, i.e., original response value
+                dc->SetCKMValue(dc->GetResp());
+            }
+        }
+        else{ // if empty cell stays empty, i.e., value 0
+            dc->SetCKMValue(0); 
+        }
+    }    
+    
+    return 1;
+}
+
+// nDec = number of decimals for the shift
+// Assumes 0 <= key < 1
+// Assumes nDec <= 61
+double TauArgus::ShiftFirstDigit(double key, int nDec){
+    char buffer[64];
+    ASSERT(nDec < 62);
+    snprintf(buffer,64,"%*.*f", nDec+2, nDec, key);
+    std::string cstr(buffer);
+    cstr = "0." + cstr.substr(3) + cstr.substr(2,1);
+    return atof(cstr.c_str());
+}
+
+// x: value to evaluate the flex function
+// z_s: lower bound to define "small" = m_1/(sigma_1 * E)
+// s0, s1: sigma0 and sigma1, scaled for j-th largest observation
+// z_f: threshold to define "large" 
+double TauArgus::flexfunction(double z, double z_s, double s0, double s1, double z_f, double q, std::string Scaling){
+    double result;
+    if ((z >= z_f) && (Scaling == "F")){
+        result = s0 * (1.0 + ((s1*z - s0*z_f)/(s0*z_f))*pow(((2*z_f)/(z+z_f)),q));
+    }
+    else{
+        if (z > z_s){
+            result = s1;
+        }
+        else{
+            result = 0.0;
+        }
+    }
+    return result;
+}
+
+// Find perturbation value V for value z
+// Interpolate between z_lower < z < z_upper if needed
+double TauArgus::LookUpVinptable(std::map<int,PTableDRow> ptable, double z, double RKey){
+    double result = 0, Diff0 = 0, Diff1 = 0;
+    double a0, a1, lambda;
+    std::map<int,PTableDRow>::iterator row1, row0;
+    PTableDRow::iterator PTRow;
+    
+    // ptable is sorted in the standard way on the keys, 
+    // so first element has smallest key, last element has largest key
+    double Jmin = (double) ptable.begin()->first; // Should be 0
+    double Jmax = (double) ptable.rbegin()->first; // rbegin() points to last item, end() points to past-the-end element
+
+    if ((Jmin <= z) && (z < Jmax)){
+        row1 = ptable.upper_bound(z);
+        row0 = std::prev(row1);
+        a0 = (double) row0->first;
+        a1 = (double) row1->first;
+        lambda = (z - a0)/(a1-a0); // By construction a0 <= z < a1
+        
+        for (PTRow=row0->second.begin();PTRow!=row0->second.end();++PTRow){
+            if (RKey < PTRow->second[1]){
+                Diff0 = (double) PTRow->first - (double) row0->first;
+                break;
+            }
+        }
+        if (fabs(a0-z)>1E-8){ // Only needed if a0 != z, in practice if (a0 - z) > 1E-8
+            for (PTRow=row1->second.begin();PTRow!=row1->second.end();++PTRow){
+                if (RKey < PTRow->second[1]){
+                    Diff1 = (double) PTRow->first - (double) row1->first;
+                    break;
+                }
+            }
+        }
+        result = (1.0-lambda)*Diff0 + lambda*Diff1;
+    }
+    
+    if (z >= Jmax){ // take difference from distribution of largest key in ptable
+        for (PTRow=ptable.rbegin()->second.begin(); PTRow!=ptable.rbegin()->second.end(); ++PTRow){
+            if (RKey < PTRow->second[1]) {
+                result = (double) PTRow->first - (double) ptable.rbegin()->first;
+                break;
+            }
+        }
+    }
+    
+    return result;
+}
+
+double TauArgus::GetXj(std::string CKMType, int j, CDataCell &dc, bool WeightApplied){
+    ASSERT (dc.GetStatus() != CS_EMPTY);
+    
+    if (CKMType == "T"){ // j = 1, ..., topK
+        double wj = WeightApplied ? dc.MaxScoreWeightCell[j-1] : 1.0;
+        return  wj*dc.MaxScoreCell[j-1]; 
+    }
+    
+    if (CKMType == "M") return (WeightApplied ? dc.GetResp()/dc.GetWeight() : dc.GetResp()/dc.GetFreq());
+    
+    if (CKMType == "D") return (dc.MaxScoreCell[0] - dc.MinScoreCell);
+    
+    if (CKMType == "V") return dc.GetResp();
+    
+    return -1E42; // Should not happen
 }
